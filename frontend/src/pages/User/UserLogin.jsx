@@ -166,8 +166,7 @@ export default function UserLogin() {
           <p className="text-sm text-white/70">
             Don’t have an account?
             <Link
-              to="https://forms.gle/4ojN3ct8V7wcv7e7A"
-              target="_blank"
+              to="/user-register"
               className="ml-1 text-white font-semibold hover:underline"
             >
               Register here

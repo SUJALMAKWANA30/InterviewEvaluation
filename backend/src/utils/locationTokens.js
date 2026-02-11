@@ -22,8 +22,8 @@ export const loadLocationTokens = () => {
 
   if (Object.keys(locationTokens).length === 0) {
     locationTokens["ExamCenter1"] = {
-      lat: 22.3151,
-      lon: 73.1443,
+      lat: 22.31510639531124,
+      lon: 73.14437401324615,
       maxRadius: 300,
       name: "Exam Center 1",
     };

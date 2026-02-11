@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { MapPin, Mail, Lock, AlertCircle, Loader } from 'lucide-react';
+import { MapPin, AlertCircle } from 'lucide-react';
 const BACKEND_API_URL = import.meta.env.VITE_API_URL || '/api';
+const API_BASE = BACKEND_API_URL.endsWith('/api') ? BACKEND_API_URL : `${BACKEND_API_URL}/api`;
 
 export default function UserRegistration() {
   const [formData, setFormData] = useState({
@@ -13,72 +14,9 @@ export default function UserRegistration() {
     confirmPassword: '',
   });
 
-  const [location, setLocation] = useState(null);
-  const [locationError, setLocationError] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [locationPermission, setLocationPermission] = useState(false);
   const navigate = useNavigate();
-
-  // Get user's location
-  useEffect(() => {
-    requestLocationAccess();
-  }, []);
-
-  const requestLocationAccess = () => {
-    if (!navigator.geolocation) {
-      setLocationError('Geolocation is not supported by your browser');
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude, accuracy } = position.coords;
-        setLocation({ latitude, longitude, accuracy });
-        setLocationPermission(true);
-        setLocationError('');
-
-        // Verify location is within 10 meters of event venue
-        validateLocationProximity(latitude, longitude);
-      },
-      (error) => {
-        setLocationError('Please enable location access to register');
-        setLocationPermission(false);
-        console.error(error);
-      }
-    );
-  };
-
-  const validateLocationProximity = (userLat, userLng) => {
-    // Event venue coordinates (replace with actual coordinates)
-    const venueLat = 40.7128;
-    const venueLng = -74.006;
-    const maxRadius = 10; // meters
-
-    const distance = calculateDistance(userLat, userLng, venueLat, venueLng);
-
-    if (distance > maxRadius) {
-      setLocationError(
-        `You are ${Math.round(distance)}m away from venue. Please come within 10m to register.`
-      );
-    } else {
-      setLocationError('');
-    }
-  };
-
-  const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371000; // Earth's radius in meters
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLon = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c; // distance in meters
-  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -98,29 +36,18 @@ export default function UserRegistration() {
       return;
     }
 
-    if (!location) {
-      setError('Location access is required to register');
-      return;
-    }
-
-    if (locationError) {
-      setError(locationError);
-      return;
-    }
-
     setLoading(true);
 
     try {
-      const response = await fetch(`${BACKEND_API_URL}/auth/register-user`, {
+      const response = await fetch(`${API_BASE}/auth/register-user`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...formData,
-          location: {
-            latitude: location.latitude,
-            longitude: location.longitude,
-            accuracy: location.accuracy,
-          },
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+          phone: formData.phone,
+          password: formData.password,
         }),
       });
 
@@ -128,7 +55,7 @@ export default function UserRegistration() {
 
       if (response.ok) {
         // Show success message
-        alert('Registration successful! Check your email for your unique ID.');
+        alert('Registration successful! You can now login.');
         navigate('/user-login');
       } else {
         setError(data.message || 'Registration failed');
@@ -185,34 +112,6 @@ export default function UserRegistration() {
       fontSize: '16px',
       color: '#6b7280',
       margin: '8px 0 0 0',
-    },
-    locationStatus: {
-      marginBottom: '24px',
-      padding: '16px',
-      borderRadius: '12px',
-      display: 'flex',
-      gap: '12px',
-      alignItems: 'flex-start',
-      border: `2px solid ${locationPermission ? '#10b981' : '#f59e0b'}`,
-      background: locationPermission ? '#d1fae5' : '#fef3c7',
-    },
-    locationIcon: {
-      fontSize: '20px',
-      marginTop: '4px',
-      flexShrink: 0,
-      color: locationPermission ? '#10b981' : '#f59e0b',
-    },
-    locationText: {
-      fontSize: '14px',
-      fontWeight: '500',
-      color: locationPermission ? '#065f46' : '#92400e',
-      margin: '0',
-    },
-    accuracyText: {
-      fontSize: '12px',
-      color: '#6b7280',
-      marginTop: '6px',
-      margin: '6px 0 0 0',
     },
     errorAlert: {
       marginBottom: '24px',
@@ -325,23 +224,6 @@ export default function UserRegistration() {
           <p style={styles.subtitle}>Walking Interview System</p>
         </div>
 
-        {/* Location Status */}
-        <div style={styles.locationStatus}>
-          <MapPin size={20} style={styles.locationIcon} />
-          <div>
-            <p style={styles.locationText}>
-              {locationPermission
-                ? '✓ Location access granted'
-                : '⚠ Location access needed to register'}
-            </p>
-            {location && (
-              <p style={styles.accuracyText}>
-                Accuracy: ±{Math.round(location.accuracy)}m
-              </p>
-            )}
-          </div>
-        </div>
-
         {/* Error Alert */}
         {error && (
           <div style={styles.errorAlert}>
@@ -443,13 +325,13 @@ export default function UserRegistration() {
 
           <button
             type="submit"
-            disabled={loading || !locationPermission}
+            disabled={loading}
             style={{
               ...styles.button,
-              ...(loading || !locationPermission ? styles.buttonDisabled : {}),
+              ...(loading ? styles.buttonDisabled : {}),
             }}
             onMouseEnter={(e) => {
-              if (!loading && locationPermission) {
+              if (!loading) {
                 e.target.style.transform = 'translateY(-2px)';
                 e.target.style.boxShadow = '0 8px 20px rgba(102, 126, 234, 0.4)';
               }

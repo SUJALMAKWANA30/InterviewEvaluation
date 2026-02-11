@@ -55,11 +55,8 @@ function App() {
             <UserLogin />
           </LocationGate>
         } />
-        <Route path="/user-register" element={
-          <LocationGate>
-            <UserRegistration />
-          </LocationGate>
-        } />
+        
+        <Route path="/user-register" element={<UserRegistration />} />
         <Route path="/hr-login" element={<HRLogin />} />
  
         {/* Protected User Routes */}
