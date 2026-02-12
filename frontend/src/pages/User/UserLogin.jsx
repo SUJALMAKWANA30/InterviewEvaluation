@@ -86,94 +86,102 @@ export default function UserLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center px-6">
+  <div className="min-h-screen bg-gray-100 flex justify-center pt-30 px-6">
 
-      {/* Card */}
-      <div className="w-full max-w-md backdrop-blur-xl bg-white/10 border border-white/20 rounded-2xl shadow-2xl p-8">
+    {/* Centered Container */}
+    <div className="w-full max-w-md text-left">
 
-        {/* Logo */}
-        <div className="flex justify-center mb-6">
-          <img
-            src="https://www.tecnoprism.com/_next/image?url=%2F_next%2Fstatic%2Fmedia%2Flogo-full.4865c8ea.png&w=1920&q=75"
-            alt="TecnoPrism"
-            className="h-12 object-contain"
+      {/* Back Link */}
+      {/* <Link
+        to="/"
+        className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800 mb-8"
+      >
+        <span className="text-base">←</span>
+        Back to home
+      </Link> */}
+
+      {/* Heading */}
+      <h1 className="text-3xl font-bold text-gray-900">
+        Candidate Login
+      </h1>
+
+      <p className="mt-2 text-gray-500">
+        Enter your credentials to continue
+      </p>
+
+      {/* Error */}
+      {error && (
+        <div className="flex items-start gap-2 mt-6 bg-red-100 border border-red-300 text-red-600 px-4 py-3 rounded-md text-sm">
+          <AlertCircle size={18} />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="mt-8 space-y-6">
+
+        {/* Email */}
+        <div className="text-left">
+          <label className="block text-sm font-medium text-gray-800 mb-2">
+            Email
+          </label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="name@company.com"
+            required
+            className="w-full rounded-md border border-gray-300 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
           />
         </div>
 
-        {/* Heading */}
-        <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold text-white">
-            Candidate Login
-          </h2>
-          <p className="text-sm text-white/70 mt-2">
-            Walking Interview Portal
-          </p>
-        </div>
-
-        {/* Error Box */}
-        {error && (
-          <div className="flex items-start gap-2 mb-4 bg-red-500/20 border border-red-400/40 text-red-100 px-4 py-3 rounded-lg text-sm">
-            <AlertCircle size={18} />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-5">
-
-          {/* Email */}
-          <div>
-            <label className="block text-sm text-white/80 mb-2">
-              Email Address
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-              className="w-full px-4 py-3 rounded-xl bg-white/20 text-white placeholder-white/60 border border-white/30 focus:outline-none focus:ring-2 focus:ring-white/60 focus:bg-white/30 transition-all duration-300"
-            />
-          </div>
-
-          {/* Password */}
-          <div>
-            <label className="block text-sm text-white/80 mb-2">
+        {/* Password */}
+        <div className="text-left">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-sm font-medium text-gray-800">
               Password
             </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              className="w-full px-4 py-3 rounded-xl bg-white/20 text-white placeholder-white/60 border border-white/30 focus:outline-none focus:ring-2 focus:ring-white/60 focus:bg-white/30 transition-all duration-300"
-            />
+            <Link
+              to="#"
+              className="text-sm text-blue-600 hover:underline"
+            >
+              Forgot password?
+            </Link>
           </div>
 
-          {/* Button */}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 rounded-xl bg-white text-purple-600 font-semibold hover:bg-gray-100 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-60"
-          >
-            {loading ? 'Logging in...' : 'Login'}
-          </button>
-        </form>
-
-        {/* Footer */}
-        <div className="text-center mt-6">
-          <p className="text-sm text-white/70">
-            Don’t have an account?
-            <Link
-              to="/user-register"
-              className="ml-1 text-white font-semibold hover:underline"
-            >
-              Register here
-            </Link>
-          </p>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter your password"
+            required
+            className="w-full rounded-md border border-gray-300 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+          />
         </div>
-      </div>
+
+        {/* Button */}
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full py-3 rounded-md bg-linear-to-r from-blue-600 to-blue-700 text-white font-medium hover:opacity-95 transition disabled:opacity-60"
+        >
+          {loading ? "Logging in..." : "Sign In"}
+        </button>
+      </form>
+
+      {/* Footer */}
+      <p className="mt-8 text-sm text-center text-gray-500">
+        Don't have an account?{" "}
+        <Link
+          to="/user-register"
+          className="text-blue-600 font-medium hover:underline"
+        >
+          Register here
+        </Link>
+      </p>
+
     </div>
-  );
+  </div>
+);
+
 }

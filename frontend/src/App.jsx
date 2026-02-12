@@ -55,7 +55,7 @@ function App() {
             <UserLogin />
           </LocationGate>
         } />
-        
+        {/* <Route path="/user-login" element={<UserLogin />} /> */}
         <Route path="/user-register" element={<UserRegistration />} />
         <Route path="/hr-login" element={<HRLogin />} />
  
