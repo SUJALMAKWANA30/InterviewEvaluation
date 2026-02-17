@@ -29,7 +29,7 @@ export const loadLocationTokens = () => {
     };
   }
 
-  console.log("📍 Loaded Location Tokens:", locationTokens);
+  // console.log("📍 Loaded Location Tokens:", locationTokens);
 };
 
 export const getLocationTokens = () => locationTokens;

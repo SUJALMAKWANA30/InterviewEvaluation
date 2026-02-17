@@ -34,6 +34,9 @@ export const registerCandidate = async (req, res) => {
 
       // Terms
       termsAccepted,
+
+      // Document URLs (from URL-based upload)
+      documentUrls,
     } = req.body;
 
     // Validate required fields
@@ -62,17 +65,37 @@ export const registerCandidate = async (req, res) => {
       lastBreakup: "",
     };
 
-    // Try to upload files, but don't block registration if it fails
+    // First, apply any URL-based document links from the frontend
+    if (documentUrls) {
+      try {
+        const parsedUrls = typeof documentUrls === "string" ? JSON.parse(documentUrls) : documentUrls;
+        for (const [key, url] of Object.entries(parsedUrls)) {
+          if (url && documentLinks.hasOwnProperty(key)) {
+            documentLinks[key] = url;
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to parse documentUrls:", e.message);
+      }
+    }
+
+    // Try to upload files to Google Drive, but don't block registration if it fails
     try {
       if (req.files) {
+        console.log("📁 Files received for upload:", Object.keys(req.files).join(", "));
+
         const uploadFile = async (file, folder, linkKey) => {
           try {
+            console.log(`⬆️  Uploading ${linkKey}: ${file.originalname} (${(file.size / 1024).toFixed(1)}KB)`);
             const result = await uploadFileToDrive(file, folder);
             if (result && result.directLink) {
               documentLinks[linkKey] = result.directLink;
+              console.log(`✅ ${linkKey} uploaded: ${result.directLink}`);
+            } else {
+              console.warn(`⚠️  ${linkKey} upload returned no link`);
             }
           } catch (err) {
-            console.warn(`${linkKey} upload failed:`, err.message);
+            console.error(`❌ ${linkKey} upload failed:`, err.message);
           }
         };
 
@@ -95,6 +118,7 @@ export const registerCandidate = async (req, res) => {
         }
 
         await Promise.allSettled(uploadPromises);
+        console.log("📋 Final document links:", JSON.stringify(documentLinks, null, 2));
       }
     } catch (uploadError) {
       console.warn("File upload process failed, continuing without documents:", uploadError.message);
@@ -217,6 +241,12 @@ export const loginCandidate = async (req, res) => {
       });
     }
 
+    // Mark attendance as true on successful login
+    if (!candidate.attendance) {
+      candidate.attendance = true;
+      await candidate.save();
+    }
+
     // Generate JWT token
     const token = jwt.sign(
       { id: candidate._id, email: candidate.email, type: "candidate" },
@@ -236,6 +266,7 @@ export const loginCandidate = async (req, res) => {
         phone: candidate.phone,
         uniqueId: candidate.uniqueId,
         examStatus: candidate.examStatus,
+        attendance: candidate.attendance,
       },
     });
   } catch (error) {
