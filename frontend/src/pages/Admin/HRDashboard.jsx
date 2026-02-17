@@ -57,6 +57,21 @@ const HRDashboard = () => {
 
         const base = configured.replace(/\/+$/g, '').replace(/\/api$/, '');
         
+        // Also fetch from local candidate-details API
+        const localApiBase = configured.endsWith('/api') ? configured : `${configured}/api`;
+        
+        // Fetch local registered candidates
+        let localCandidates = [];
+        try {
+          const localRes = await fetch(`${localApiBase}/candidate-details`);
+          if (localRes.ok) {
+            const localJson = await localRes.json();
+            localCandidates = localJson.data || [];
+          }
+        } catch (localErr) {
+          console.warn('Failed to fetch local candidates:', localErr);
+        }
+        
         const candidatesUrls = [
           // Primary endpoints (external API structure)
           `${base}/details`,
@@ -78,12 +93,48 @@ const HRDashboard = () => {
           }
         }
 
-        if (!res) {
-          throw lastError || new Error('Failed to fetch candidates');
+        // If external API fails, use local candidates only
+        let list = [];
+        if (res) {
+          const json = await res.json();
+          list = json.data || json;
         }
-
-        const json = await res.json();
-        const list = json.data || json;
+        
+        // Merge local candidates into the list
+        localCandidates.forEach((localCandidate) => {
+          const exists = list.some(
+            (item) => (item.email || item['Email Address'] || '').toLowerCase() === localCandidate.email?.toLowerCase()
+          );
+          if (!exists) {
+            // Transform local candidate to match expected format
+            list.push({
+              _id: localCandidate._id,
+              uniqueId: localCandidate.uniqueId,
+              'Full Name': `${localCandidate.firstName} ${localCandidate.lastName}`,
+              'Email Address': localCandidate.email,
+              'Phone number': localCandidate.phone,
+              'Preferred Location': localCandidate.preferredLocation,
+              'Are you wiling to relocate?': localCandidate.willingToRelocate,
+              'Notice Period': localCandidate.noticePeriod,
+              'Skills': Array.isArray(localCandidate.skills) ? localCandidate.skills.join(', ') : localCandidate.skills,
+              'Current Designation': localCandidate.currentDesignation,
+              'Current CTC': localCandidate.currentCTC,
+              'Total Experience (Years)': localCandidate.totalExperience,
+              'Experience [GenAI]': localCandidate.experienceLevels?.genai || '',
+              'Experience [Python]': localCandidate.experienceLevels?.python || '',
+              'Experience [RPA]': localCandidate.experienceLevels?.rpa || '',
+              'Resume': localCandidate.documents?.resume || '',
+              'Photo': localCandidate.documents?.photo || '',
+              'Aadhar Card': localCandidate.documents?.idProof || '',
+              'Payslip': localCandidate.documents?.payslips || '',
+              'Last Breakup': localCandidate.documents?.lastBreakup || '',
+              examStatus: localCandidate.examStatus || 'not_started',
+              score: localCandidate.examScore,
+              createdAt: localCandidate.createdAt,
+              isLocalRegistration: true,
+            });
+          }
+        });
 
         // Fetch round 1 quiz segregation data
         const quizUrls = [

@@ -49,13 +49,13 @@ function App() {
       <Toaster position="top-center" />
       <Routes>
         {/* Public Routes - Protected by Location */}
-        <Route path="/" element={<RedirectWithParams to="/user-login" />} />
+        {/* <Route path="/" element={<RedirectWithParams to="/user-login" />} />
         <Route path="/user-login" element={
           <LocationGate>
             <UserLogin />
           </LocationGate>
-        } />
-        {/* <Route path="/user-login" element={<UserLogin />} /> */}
+        } /> */}
+        <Route path="/user-login" element={<UserLogin />} />
         <Route path="/user-register" element={<UserRegistration />} />
         <Route path="/hr-login" element={<HRLogin />} />
  

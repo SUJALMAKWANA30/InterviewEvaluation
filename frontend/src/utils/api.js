@@ -371,3 +371,68 @@ export const emailAPI = {
     return handleResponse(response);
   },
 };
+
+// ==================== CANDIDATE DETAILS APIs ====================
+
+export const candidateDetailsAPI = {
+  /**
+   * Register a new candidate with documents
+   */
+  register: async (formData) => {
+    const token = localStorage.getItem('authToken');
+    const response = await fetch(`${API_BASE_URL}/candidate-details/register`, {
+      method: 'POST',
+      headers: {
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      body: formData, // FormData for file upload
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Login candidate
+   */
+  login: async (email, password) => {
+    const response = await fetch(`${API_BASE_URL}/candidate-details/login`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ email, password }),
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Get all candidates
+   */
+  getAll: async () => {
+    const response = await fetch(`${API_BASE_URL}/candidate-details`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Get candidate by ID
+   */
+  getById: async (id) => {
+    const response = await fetch(`${API_BASE_URL}/candidate-details/${id}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Update candidate
+   */
+  update: async (id, updateData) => {
+    const response = await fetch(`${API_BASE_URL}/candidate-details/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(updateData),
+    });
+    return handleResponse(response);
+  },
+};

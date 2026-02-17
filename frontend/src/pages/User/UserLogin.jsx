@@ -1,14 +1,19 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { AlertCircle } from 'lucide-react';
-import { authAPI } from '../../utils/api';
+import { AlertCircle, Eye, EyeOff } from 'lucide-react';
+
+const BACKEND_API_URL = import.meta.env.VITE_API_URL || '/api';
+const API_BASE = BACKEND_API_URL.endsWith('/api')
+  ? BACKEND_API_URL
+  : `${BACKEND_API_URL}/api`;
 
 export default function UserLogin() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -20,55 +25,32 @@ export default function UserLogin() {
       const normalizedEmail = email.trim().toLowerCase();
       const normalizedPassword = password.trim();
 
-      let token = null;
-
-      try {
-        const data = await authAPI.loginUser(normalizedEmail, normalizedPassword);
-        token = data.token || null;
-      } catch (primaryErr) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000);
-
-        const response = await fetch(
-          'https://tecnoprismmainbackend.onrender.com/user-details/credentials',
-          { signal: controller.signal }
-        );
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch user credentials');
-        }
-
-        const data = await response.json();
-        const users = data.data || [];
-
-        const foundUser = users.find(
-          (u) => (u.Username || '').trim().toLowerCase() === normalizedEmail
-        );
-
-        if (!foundUser) {
-          throw new Error('No user found with this email');
-        }
-
-        const storedPassword = (foundUser.Password || '').toString().trim();
-
-        if (storedPassword !== normalizedPassword) {
-          throw new Error('Incorrect password');
-        }
-
-        token = `token-ext-${normalizedEmail}`;
-      }
-
-      await fetch('https://tecnoprismmainbackend.onrender.com/qr/set-true', {
+      // Try to login with the new candidate-details endpoint
+      const response = await fetch(`${API_BASE}/candidate-details/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ Username: normalizedEmail }),
+        body: JSON.stringify({
+          email: normalizedEmail,
+          password: normalizedPassword,
+        }),
       });
 
-      localStorage.setItem('authToken', token);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Login failed');
+      }
+
+      // Store auth data
+      localStorage.setItem('authToken', data.token);
       localStorage.setItem('userType', 'user');
-      localStorage.setItem('userData', JSON.stringify({ email: normalizedEmail }));
+      localStorage.setItem('userData', JSON.stringify({
+        id: data.candidate.id,
+        email: data.candidate.email,
+        firstName: data.candidate.firstName,
+        lastName: data.candidate.lastName,
+        uniqueId: data.candidate.uniqueId,
+      }));
 
       toast.success('Login Successful! You may start your exam now.', {
         duration: 3000,
@@ -149,14 +131,23 @@ export default function UserLogin() {
             </Link>
           </div>
 
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter your password"
-            required
-            className="w-full rounded-md border border-gray-300 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
-          />
+          <div className="relative">
+            <input
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter your password"
+              required
+              className="w-full rounded-md border border-gray-300 bg-white px-4 py-3 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
+          </div>
         </div>
 
         {/* Button */}

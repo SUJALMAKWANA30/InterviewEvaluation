@@ -1,0 +1,340 @@
+import CandidateDetails from "../models/CandidateDetails.js";
+import { uploadFileToDrive } from "../services/googleDriveService.js";
+import jwt from "jsonwebtoken";
+
+const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production";
+
+/* ===============================
+   REGISTER CANDIDATE
+================================ */
+export const registerCandidate = async (req, res) => {
+  try {
+    const {
+      // Personal Information
+      firstName,
+      lastName,
+      email,
+      phone,
+      dateOfBirth,
+      preferredLocation,
+      willingToRelocate,
+
+      // Professional Details
+      positionApplied,
+      totalExperience,
+      highestEducation,
+      skills,
+      noticePeriod,
+      currentDesignation,
+      currentCTC,
+      experienceLevels,
+
+      // Authentication
+      password,
+
+      // Terms
+      termsAccepted,
+    } = req.body;
+
+    // Validate required fields
+    if (!firstName || !lastName || !email || !phone || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide all required fields (firstName, lastName, email, phone, password)",
+      });
+    }
+
+    // Check if candidate already exists
+    const existingCandidate = await CandidateDetails.findOne({ email: email.toLowerCase() });
+    if (existingCandidate) {
+      return res.status(400).json({
+        success: false,
+        message: "A candidate with this email already exists",
+      });
+    }
+
+    // Handle file uploads to Google Drive (optional - registration continues even if uploads fail)
+    let documentLinks = {
+      resume: "",
+      idProof: "",
+      photo: "",
+      payslips: "",
+      lastBreakup: "",
+    };
+
+    // Try to upload files, but don't block registration if it fails
+    try {
+      if (req.files) {
+        const uploadFile = async (file, folder, linkKey) => {
+          try {
+            const result = await uploadFileToDrive(file, folder);
+            if (result && result.directLink) {
+              documentLinks[linkKey] = result.directLink;
+            }
+          } catch (err) {
+            console.warn(`${linkKey} upload failed:`, err.message);
+          }
+        };
+
+        const uploadPromises = [];
+
+        if (req.files.resume && req.files.resume[0]) {
+          uploadPromises.push(uploadFile(req.files.resume[0], "resumes", "resume"));
+        }
+        if (req.files.idProof && req.files.idProof[0]) {
+          uploadPromises.push(uploadFile(req.files.idProof[0], "id-proofs", "idProof"));
+        }
+        if (req.files.photo && req.files.photo[0]) {
+          uploadPromises.push(uploadFile(req.files.photo[0], "photos", "photo"));
+        }
+        if (req.files.payslips && req.files.payslips[0]) {
+          uploadPromises.push(uploadFile(req.files.payslips[0], "payslips", "payslips"));
+        }
+        if (req.files.lastBreakup && req.files.lastBreakup[0]) {
+          uploadPromises.push(uploadFile(req.files.lastBreakup[0], "last-breakup", "lastBreakup"));
+        }
+
+        await Promise.allSettled(uploadPromises);
+      }
+    } catch (uploadError) {
+      console.warn("File upload process failed, continuing without documents:", uploadError.message);
+    }
+
+    // Parse skills if it's a string
+    let parsedSkills = skills;
+    if (typeof skills === "string") {
+      try {
+        parsedSkills = JSON.parse(skills);
+      } catch {
+        parsedSkills = skills.split(",").map((s) => s.trim());
+      }
+    }
+
+    // Parse experienceLevels if it's a string
+    let parsedExperienceLevels = experienceLevels;
+    if (typeof experienceLevels === "string") {
+      try {
+        parsedExperienceLevels = JSON.parse(experienceLevels);
+      } catch {
+        parsedExperienceLevels = {};
+      }
+    }
+
+    // Create new candidate
+    const candidate = new CandidateDetails({
+      firstName,
+      lastName,
+      email: email.toLowerCase(),
+      phone,
+      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+      preferredLocation,
+      willingToRelocate,
+      positionApplied,
+      totalExperience,
+      highestEducation,
+      skills: parsedSkills || [],
+      noticePeriod,
+      currentDesignation,
+      currentCTC,
+      experienceLevels: parsedExperienceLevels || {},
+      documents: documentLinks,
+      password,
+      termsAccepted: termsAccepted === true || termsAccepted === "true",
+    });
+
+    await candidate.save();
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: candidate._id, email: candidate.email, type: "candidate" },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Registration successful",
+      token,
+      candidate: {
+        id: candidate._id,
+        firstName: candidate.firstName,
+        lastName: candidate.lastName,
+        email: candidate.email,
+        phone: candidate.phone,
+        uniqueId: candidate.uniqueId,
+        documents: candidate.documents,
+      },
+    });
+  } catch (error) {
+    console.error("Registration error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Registration failed. Please try again.",
+      error: error.message,
+    });
+  }
+};
+
+/* ===============================
+   LOGIN CANDIDATE
+================================ */
+export const loginCandidate = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide email and password",
+      });
+    }
+
+    // Find candidate by email
+    const candidate = await CandidateDetails.findOne({ email: email.toLowerCase() });
+
+    if (!candidate) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password",
+      });
+    }
+
+    // Check if account is active
+    if (!candidate.isActive) {
+      return res.status(401).json({
+        success: false,
+        message: "Your account has been deactivated. Please contact support.",
+      });
+    }
+
+    // Compare password
+    const isPasswordValid = await candidate.comparePassword(password);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password",
+      });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: candidate._id, email: candidate.email, type: "candidate" },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Login successful",
+      token,
+      candidate: {
+        id: candidate._id,
+        firstName: candidate.firstName,
+        lastName: candidate.lastName,
+        email: candidate.email,
+        phone: candidate.phone,
+        uniqueId: candidate.uniqueId,
+        examStatus: candidate.examStatus,
+      },
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Login failed. Please try again.",
+      error: error.message,
+    });
+  }
+};
+
+/* ===============================
+   GET ALL CANDIDATES (for HR Dashboard)
+================================ */
+export const getAllCandidateDetails = async (req, res) => {
+  try {
+    const candidates = await CandidateDetails.find()
+      .select("-password")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: candidates.length,
+      data: candidates,
+    });
+  } catch (error) {
+    console.error("Error fetching candidates:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch candidates",
+      error: error.message,
+    });
+  }
+};
+
+/* ===============================
+   GET CANDIDATE BY ID
+================================ */
+export const getCandidateDetailsById = async (req, res) => {
+  try {
+    const candidate = await CandidateDetails.findById(req.params.id).select("-password");
+
+    if (!candidate) {
+      return res.status(404).json({
+        success: false,
+        message: "Candidate not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: candidate,
+    });
+  } catch (error) {
+    console.error("Error fetching candidate:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching candidate",
+      error: error.message,
+    });
+  }
+};
+
+/* ===============================
+   UPDATE CANDIDATE
+================================ */
+export const updateCandidateDetails = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = { ...req.body };
+
+    // Don't allow password update through this endpoint
+    delete updateData.password;
+
+    const candidate = await CandidateDetails.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true, runValidators: true }
+    ).select("-password");
+
+    if (!candidate) {
+      return res.status(404).json({
+        success: false,
+        message: "Candidate not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Candidate updated successfully",
+      data: candidate,
+    });
+  } catch (error) {
+    console.error("Error updating candidate:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating candidate",
+      error: error.message,
+    });
+  }
+};
