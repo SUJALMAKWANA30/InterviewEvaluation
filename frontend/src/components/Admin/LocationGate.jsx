@@ -1,68 +1,93 @@
-import React, { useState, useEffect } from 'react';
-import { MapPin, AlertTriangle, Loader, RefreshCw, QrCode } from 'lucide-react';
-import { getUserLocation, isWithinRadius, getGeolocationErrorMessage } from '../../utils/geolocation';
+import React, { useState, useEffect } from "react";
+import { Zap, MapPin, Check, X, Loader2 } from "lucide-react";
+import {
+  getUserLocation,
+  isWithinRadius,
+  getGeolocationErrorMessage,
+} from "../../utils/geolocation";
 
-const QUIZ_BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
+const QUIZ_BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
 const LOCATION_API_BASE = QUIZ_BACKEND_URL
   ? `${QUIZ_BACKEND_URL}/api`
-  : (import.meta.env.VITE_API_URL || '/api');
+  : import.meta.env.VITE_API_URL || "/api";
 
 // Get token from URL
 const getTokenFromURL = () => {
   const urlParams = new URLSearchParams(window.location.search);
-  return urlParams.get('token');
+  return urlParams.get("token");
 };
 
 // Fetch location from backend using token
 const fetchLocationFromToken = async (token) => {
   try {
-    const response = await fetch(`${LOCATION_API_BASE}/location/validate?token=${token}`);
+    const response = await fetch(
+      `${LOCATION_API_BASE}/location/validate?token=${token}`,
+    );
     const data = await response.json();
-    
+
     if (data.success) {
       return {
         lat: data.lat,
         lon: data.lon,
         maxRadius: data.maxRadius || 200,
         isValid: true,
-        bypassLocation: data.bypassLocation || false  // Emergency bypass flag
+        bypassLocation: data.bypassLocation || false, // Emergency bypass flag
       };
     }
-    return { lat: null, lon: null, maxRadius: 200, isValid: false, bypassLocation: false, error: data.message };
+    return {
+      lat: null,
+      lon: null,
+      maxRadius: 200,
+      isValid: false,
+      bypassLocation: false,
+      error: data.message,
+    };
   } catch (error) {
-    console.error('Error fetching location:', error);
-    return { lat: null, lon: null, maxRadius: 200, isValid: false, bypassLocation: false, error: 'Server connection failed' };
+    console.error("Error fetching location:", error);
+    return {
+      lat: null,
+      lon: null,
+      maxRadius: 200,
+      isValid: false,
+      bypassLocation: false,
+      error: "Server connection failed",
+    };
   }
 };
 
 export default function LocationGate({ children }) {
-  const [status, setStatus] = useState('checking'); // 'checking', 'granted', 'denied', 'error', 'no-qr'
-  const [error, setError] = useState('');
+  const [status, setStatus] = useState("checking"); // 'checking', 'granted', 'denied', 'error', 'no-qr'
+  const [error, setError] = useState("");
   const [distance, setDistance] = useState(null);
   const [userCoords, setUserCoords] = useState(null);
   const [allowedLocation, setAllowedLocation] = useState(null);
-  const [permissionState, setPermissionState] = useState('unknown'); // 'unknown' | 'granted' | 'prompt' | 'denied'
+  const [permissionState, setPermissionState] = useState("unknown"); // 'unknown' | 'granted' | 'prompt' | 'denied'
   const [permissionChecked, setPermissionChecked] = useState(false);
 
   const checkLocation = async () => {
     const token = getTokenFromURL();
-    
+
     // Check if token is provided in URL
     if (!token) {
-      setStatus('no-qr');
-      setError('No access token found. Please scan the QR code at the examination center.');
+      setStatus("no-qr");
+      setError(
+        "No access token found. Please scan the QR code at the examination center.",
+      );
       return;
     }
 
-    setStatus('checking');
-    setError('');
+    setStatus("checking");
+    setError("");
 
     // Fetch location from backend
     const locationData = await fetchLocationFromToken(token);
-    
+
     if (!locationData.isValid) {
-      setStatus('no-qr');
-      setError(locationData.error || 'Invalid or expired token. Please scan a valid QR code.');
+      setStatus("no-qr");
+      setError(
+        locationData.error ||
+          "Invalid or expired token. Please scan a valid QR code.",
+      );
       return;
     }
 
@@ -70,8 +95,10 @@ export default function LocationGate({ children }) {
 
     // TPAccess bypass - skip location check entirely
     if (locationData.bypassLocation) {
-      console.log('🔓 Emergency bypass token detected - skipping location check');
-      setStatus('granted');
+      console.log(
+        "🔓 Emergency bypass token detected - skipping location check",
+      );
+      setStatus("granted");
       return;
     }
 
@@ -79,7 +106,7 @@ export default function LocationGate({ children }) {
       const location = await getUserLocation();
       setUserCoords({
         lat: location.latitude,
-        lon: location.longitude
+        lon: location.longitude,
       });
 
       const result = isWithinRadius(
@@ -87,19 +114,21 @@ export default function LocationGate({ children }) {
         location.longitude,
         locationData.lat,
         locationData.lon,
-        locationData.maxRadius
+        locationData.maxRadius,
       );
 
       setDistance(result.distance);
 
       if (result.isWithinRadius) {
-        setStatus('granted');
+        setStatus("granted");
       } else {
-        setStatus('denied');
-        setError(`You are ${result.distance} meters away from the authorized location. Access is only allowed within ${locationData.maxRadius} meters.`);
+        setStatus("denied");
+        setError(
+          `You are ${result.distance} meters away from the authorized location. Access is only allowed within ${locationData.maxRadius} meters.`,
+        );
       }
     } catch (err) {
-      setStatus('error');
+      setStatus("error");
       setError(getGeolocationErrorMessage(err));
     }
   };
@@ -107,12 +136,12 @@ export default function LocationGate({ children }) {
   useEffect(() => {
     checkLocation();
   }, []);
-  
+
   useEffect(() => {
     const checkPermission = async () => {
       try {
         if (navigator.permissions && navigator.permissions.query) {
-          const p = await navigator.permissions.query({ name: 'geolocation' });
+          const p = await navigator.permissions.query({ name: "geolocation" });
           setPermissionState(p.state);
           setPermissionChecked(true);
           p.onchange = () => setPermissionState(p.state);
@@ -125,117 +154,21 @@ export default function LocationGate({ children }) {
     };
     checkPermission();
   }, []);
-  
+
   const requestLocationPermission = async () => {
     try {
       const loc = await getUserLocation();
       setUserCoords({ lat: loc.latitude, lon: loc.longitude });
-      setPermissionState('granted');
+      setPermissionState("granted");
     } catch (err) {
-      setPermissionState('denied');
+      setPermissionState("denied");
       setError(getGeolocationErrorMessage(err));
-    }
-  };
-
-  const styles = {
-    container: {
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '20px',
-      fontFamily: 'system-ui, sans-serif'
-    },
-    card: {
-      width: '100%',
-      maxWidth: '450px',
-      background: 'white',
-      borderRadius: '16px',
-      boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
-      padding: '40px',
-      textAlign: 'center',
-    },
-    iconBox: {
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      width: '80px',
-      height: '80px',
-      borderRadius: '50%',
-      marginBottom: '20px',
-    },
-    iconBoxChecking: {
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    },
-    iconBoxDenied: {
-      background: 'linear-gradient(135deg, #e53e3e 0%, #c53030 100%)',
-    },
-    iconBoxError: {
-      background: 'linear-gradient(135deg, #ed8936 0%, #dd6b20 100%)',
-    },
-    iconBoxNoQR: {
-      background: 'linear-gradient(135deg, #805ad5 0%, #6b46c1 100%)',
-    },
-    title: {
-      fontSize: '24px',
-      fontWeight: 'bold',
-      color: '#1a202c',
-      margin: '10px 0',
-    },
-    subtitle: {
-      color: '#718096',
-      fontSize: '14px',
-      marginBottom: '20px',
-      lineHeight: '1.6',
-    },
-    errorText: {
-      color: '#c53030',
-      fontSize: '14px',
-      marginBottom: '20px',
-      padding: '15px',
-      background: '#fee2e2',
-      borderRadius: '8px',
-    },
-    button: {
-      padding: '12px 24px',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      color: 'white',
-      border: 'none',
-      borderRadius: '8px',
-      fontSize: '16px',
-      fontWeight: '600',
-      cursor: 'pointer',
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '8px',
-      transition: 'transform 0.2s, box-shadow 0.2s',
-    },
-    spinner: {
-      animation: 'spin 1s linear infinite',
-    },
-    infoBox: {
-      marginTop: '20px',
-      padding: '15px',
-      background: '#f7fafc',
-      borderRadius: '8px',
-      fontSize: '12px',
-      color: '#718096',
-    },
-    locationInfo: {
-      marginTop: '15px',
-      padding: '10px',
-      background: '#e9ecef',
-      borderRadius: '6px',
-      fontSize: '11px',
-      color: '#495057',
-      textAlign: 'left',
     }
   };
 
   // Add spinner animation
   useEffect(() => {
-    const styleSheet = document.createElement('style');
+    const styleSheet = document.createElement("style");
     styleSheet.textContent = `
       @keyframes spin {
         from { transform: rotate(0deg); }
@@ -246,136 +179,133 @@ export default function LocationGate({ children }) {
     return () => document.head.removeChild(styleSheet);
   }, []);
 
-  // If access is granted, render children (the actual login page)
-  if (status === 'granted') {
+  // If access is granted, render children
+  if (status === "granted") {
     return children;
   }
 
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        {status === 'no-qr' && (
+    <div className="flex min-h-screen items-center justify-center bg-gray-100 px-4">
+      <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white px-10 py-12 text-center shadow-sm">
+        {/* CHECKING */}
+        {status === "checking" && (
           <>
-            <div style={{ ...styles.iconBox, ...styles.iconBoxNoQR }}>
-              <QrCode size={40} color="white" />
+            <div className="relative mx-auto flex h-28 w-28 items-center justify-center">
+              {/* Outer pulse */}
+              <div className="absolute inset-0 rounded-full bg-blue-100 animate-ping opacity-40" />
+
+              {/* Inner subtle pulse */}
+              <div className="absolute inset-3 rounded-full bg-blue-50 animate-pulse" />
+
+              {/* Icon container */}
+              <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-blue-100">
+                <MapPin className="h-8 w-8 text-blue-600" />
+              </div>
             </div>
-            <h1 style={styles.title}>QR Code Required</h1>
-            <p style={styles.subtitle}>
-              Please scan the QR code at the examination center to access this system.
+
+            <h2 className="mt-8 text-xl font-semibold text-gray-900">
+              Verifying Your Location
+            </h2>
+
+            <p className="mt-3 text-sm text-gray-600 leading-relaxed">
+              Please wait while we confirm you are within the designated
+              assessment zone.
             </p>
-            <div style={styles.errorText}>
-              {error}
+
+            <div className="mt-6 flex items-center justify-center gap-2 text-sm text-gray-600">
+              <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+              Scanning GPS coordinates...
             </div>
+          </>
+        )}
+
+        {/* DENIED */}
+        {status === "denied" && (
+          <>
+            <div className="relative mx-auto flex h-28 w-28 items-center justify-center">
+              <div className="absolute inset-0 rounded-full bg-red-100 opacity-40" />
+              <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
+                <X className="h-8 w-8 text-red-600" />
+              </div>
+            </div>
+
+            <h2 className="mt-8 text-xl font-semibold text-gray-900">
+              Access Denied
+            </h2>
+
+            <p className="mt-3 text-sm text-gray-600 leading-relaxed">
+              You are not within the designated assessment zone.
+            </p>
+
+            {error && <div className="mt-4 text-sm text-red-600">{error}</div>}
+
             <button
-              style={{ ...styles.button, marginTop: '12px' }}
-              onClick={requestLocationPermission}
-              onMouseOver={(e) => {
-                e.target.style.transform = 'translateY(-2px)';
-                e.target.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.4)';
-              }}
-              onMouseOut={(e) => {
-                e.target.style.transform = 'translateY(0)';
-                e.target.style.boxShadow = 'none';
-              }}
-            >
-              <MapPin size={18} />
-              Enable Location
-            </button>
-            <div style={styles.infoBox}>
-              <strong>How it works:</strong><br />
-              1. Go to the authorized examination center<br />
-              2. Scan the QR code displayed at the location<br />
-              3. Your location will be verified automatically
-              {permissionChecked && (
-                <div style={styles.locationInfo}>
-                  <strong>Browser Location Permission:</strong> {permissionState}
-                </div>
-              )}
-            </div>
-          </>
-        )}
-
-        {status === 'checking' && (
-          <>
-            <div style={{ ...styles.iconBox, ...styles.iconBoxChecking }}>
-              <Loader size={40} color="white" style={styles.spinner} />
-            </div>
-            <h1 style={styles.title}>Verifying Location</h1>
-            <p style={styles.subtitle}>
-              Please allow location access when prompted.<br />
-              We need to verify you are at the authorized location.
-            </p>
-          </>
-        )}
-
-        {status === 'denied' && (
-          <>
-            <div style={{ ...styles.iconBox, ...styles.iconBoxDenied }}>
-              <MapPin size={40} color="white" />
-            </div>
-            <h1 style={styles.title}>Access Denied</h1>
-            <p style={styles.subtitle}>
-              You are not at the authorized location.
-            </p>
-            <div style={styles.errorText}>
-              {error}
-            </div>
-            <button 
-              style={styles.button}
               onClick={checkLocation}
-              onMouseOver={(e) => {
-                e.target.style.transform = 'translateY(-2px)';
-                e.target.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.4)';
-              }}
-              onMouseOut={(e) => {
-                e.target.style.transform = 'translateY(0)';
-                e.target.style.boxShadow = 'none';
-              }}
+              className="mt-8 w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition duration-200 hover:bg-gray-50"
             >
-              <RefreshCw size={18} />
-              Check Again
+              Retry Verification
             </button>
-            <div style={styles.infoBox}>
-              <strong>Note:</strong> This system is only accessible from the authorized examination center.
-              {allowedLocation && allowedLocation.isValid && (
-                <div style={styles.locationInfo}>
-                  <strong>Allowed Radius:</strong> {allowedLocation.maxRadius} meters
-                </div>
-              )}
-            </div>
           </>
         )}
 
-        {status === 'error' && (
+        {/* ERROR */}
+        {status === "error" && (
           <>
-            <div style={{ ...styles.iconBox, ...styles.iconBoxError }}>
-              <AlertTriangle size={40} color="white" />
+            <div className="relative mx-auto flex h-28 w-28 items-center justify-center">
+              <div className="absolute inset-0 rounded-full bg-yellow-100 opacity-40" />
+              <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-yellow-100">
+                <AlertTriangle className="h-8 w-8 text-yellow-600" />
+              </div>
             </div>
-            <h1 style={styles.title}>Location Error</h1>
-            <p style={styles.subtitle}>
+
+            <h2 className="mt-8 text-xl font-semibold text-gray-900">
+              Location Error
+            </h2>
+
+            <p className="mt-3 text-sm text-gray-600 leading-relaxed">
               Unable to verify your location.
             </p>
-            <div style={styles.errorText}>
-              {error}
-            </div>
-            <button 
-              style={styles.button}
+
+            {error && (
+              <div className="mt-4 text-sm text-yellow-600">{error}</div>
+            )}
+
+            <button
               onClick={checkLocation}
-              onMouseOver={(e) => {
-                e.target.style.transform = 'translateY(-2px)';
-                e.target.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.4)';
-              }}
-              onMouseOut={(e) => {
-                e.target.style.transform = 'translateY(0)';
-                e.target.style.boxShadow = 'none';
-              }}
+              className="mt-8 w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition duration-200 hover:bg-gray-50"
             >
-              <RefreshCw size={18} />
               Try Again
             </button>
-            <div style={styles.infoBox}>
-              <strong>Tip:</strong> Make sure location services are enabled in your browser and device settings.
+          </>
+        )}
+
+        {/* NO QR */}
+        {status === "no-qr" && (
+          <>
+            <div className="relative mx-auto flex h-28 w-28 items-center justify-center">
+              <div className="absolute inset-0 rounded-full bg-purple-100 opacity-40" />
+              <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-purple-100">
+                <MapPin className="h-8 w-8 text-purple-600" />
+              </div>
             </div>
+
+            <h2 className="mt-8 text-xl font-semibold text-gray-900">
+              QR Code Required
+            </h2>
+
+            <p className="mt-3 text-sm text-gray-600 leading-relaxed">
+              Please scan the QR code at the examination center to access this
+              system.
+            </p>
+
+            {error && <div className="mt-4 text-sm text-red-600">{error}</div>}
+
+            <button
+              onClick={requestLocationPermission}
+              className="mt-8 w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition duration-200 hover:bg-gray-50"
+            >
+              Enable Location
+            </button>
           </>
         )}
       </div>
