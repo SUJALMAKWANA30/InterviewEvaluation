@@ -26,6 +26,8 @@ Thumbs.db
 
 # Google Drive API credentials
 backend/Google Drive API/
+backend/config/google-drive-key.json
 *.json
 !package.json
+!package-lock.json
 !package-lock.json

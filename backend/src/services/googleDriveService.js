@@ -6,9 +6,6 @@ import fs from "fs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Path to the service account key file
-const KEYFILE_PATH = path.join(__dirname, "../../Google Drive API/tecnoprism-drive-4a437b921765.json");
-
 // Scopes required for Google Drive API
 const SCOPES = ["https://www.googleapis.com/auth/drive.file"];
 
@@ -19,27 +16,53 @@ let authError = null;
 
 const initializeDrive = () => {
   if (authInitialized) return drive;
-  
-  try {
-    // Check if key file exists
-    if (!fs.existsSync(KEYFILE_PATH)) {
-      console.warn("Google Drive API key file not found at:", KEYFILE_PATH);
-      authError = new Error("Google Drive API key file not found");
-      authInitialized = true;
-      return null;
-    }
 
-    const auth = new google.auth.GoogleAuth({
-      keyFile: KEYFILE_PATH,
-      scopes: SCOPES,
-    });
+  try {
+    let auth;
+
+    // Method 1 (Recommended): OAuth2 with refresh token — works with personal Google accounts
+    if (
+      process.env.GOOGLE_DRIVE_CLIENT_ID &&
+      process.env.GOOGLE_DRIVE_CLIENT_SECRET &&
+      process.env.GOOGLE_DRIVE_REFRESH_TOKEN
+    ) {
+      console.log("🔑 Using OAuth2 credentials for Google Drive");
+      const oauth2Client = new google.auth.OAuth2(
+        process.env.GOOGLE_DRIVE_CLIENT_ID,
+        process.env.GOOGLE_DRIVE_CLIENT_SECRET
+      );
+      oauth2Client.setCredentials({
+        refresh_token: process.env.GOOGLE_DRIVE_REFRESH_TOKEN,
+      });
+      auth = oauth2Client;
+    }
+    // Method 2: Service account key file (requires Google Workspace with storage quota)
+    else {
+      const keyfilePath = process.env.GOOGLE_DRIVE_KEYFILE
+        ? path.resolve(process.env.GOOGLE_DRIVE_KEYFILE)
+        : path.join(__dirname, "../../config/google-drive-key.json");
+
+      if (fs.existsSync(keyfilePath)) {
+        console.log("🔑 Using service account key file for Google Drive:", keyfilePath);
+        auth = new google.auth.GoogleAuth({
+          keyFile: keyfilePath,
+          scopes: SCOPES,
+        });
+      } else {
+        console.warn("⚠️  Google Drive API not configured.");
+        console.warn("   Run: node scripts/google-auth.js   to set up OAuth2 credentials");
+        authError = new Error("Google Drive API not configured");
+        authInitialized = true;
+        return null;
+      }
+    }
 
     drive = google.drive({ version: "v3", auth });
     authInitialized = true;
-    console.log("Google Drive API initialized successfully");
+    console.log("✅ Google Drive API initialized successfully");
     return drive;
   } catch (error) {
-    console.error("Failed to initialize Google Drive API:", error.message);
+    console.error("❌ Failed to initialize Google Drive API:", error.message);
     authError = error;
     authInitialized = true;
     return null;
@@ -54,15 +77,16 @@ const initializeDrive = () => {
  */
 export const uploadFileToDrive = async (file, folderName = "candidate-documents") => {
   const driveClient = initializeDrive();
-  
+
   if (!driveClient) {
     console.warn("Google Drive not available, skipping file upload");
     return null;
   }
-  
+
   try {
     // First, check if the folder exists or create it
-    const folderId = await getOrCreateFolder(driveClient, folderName);
+    const parentFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID || null;
+    const folderId = await getOrCreateFolder(driveClient, folderName, parentFolderId);
 
     // Create unique filename
     const uniqueFilename = `${Date.now()}-${file.originalname}`;
@@ -104,6 +128,8 @@ export const uploadFileToDrive = async (file, folderName = "candidate-documents"
       fields: "id, webViewLink, webContentLink",
     });
 
+    console.log(`✅ Uploaded ${file.originalname} to Google Drive (${folderName})`);
+
     return {
       fileId: fileData.data.id,
       webViewLink: fileData.data.webViewLink,
@@ -111,8 +137,8 @@ export const uploadFileToDrive = async (file, folderName = "candidate-documents"
       directLink: `https://drive.google.com/open?id=${fileData.data.id}`,
     };
   } catch (error) {
-    console.error("Error uploading file to Google Drive:", error);
-    return null; // Return null instead of throwing to allow registration to continue
+    console.error("❌ Error uploading file to Google Drive:", error.message);
+    return null;
   }
 };
 
@@ -122,11 +148,16 @@ export const uploadFileToDrive = async (file, folderName = "candidate-documents"
  * @param {string} folderName - Name of the folder
  * @returns {string} - Folder ID
  */
-const getOrCreateFolder = async (driveClient, folderName) => {
+const getOrCreateFolder = async (driveClient, folderName, parentFolderId = null) => {
   try {
     // Search for existing folder
+    let query = `mimeType='application/vnd.google-apps.folder' and name='${folderName}' and trashed=false`;
+    if (parentFolderId) {
+      query += ` and '${parentFolderId}' in parents`;
+    }
+
     const response = await driveClient.files.list({
-      q: `mimeType='application/vnd.google-apps.folder' and name='${folderName}' and trashed=false`,
+      q: query,
       fields: "files(id, name)",
       spaces: "drive",
     });
@@ -140,6 +171,9 @@ const getOrCreateFolder = async (driveClient, folderName) => {
       name: folderName,
       mimeType: "application/vnd.google-apps.folder",
     };
+    if (parentFolderId) {
+      folderMetadata.parents = [parentFolderId];
+    }
 
     const folder = await driveClient.files.create({
       requestBody: folderMetadata,

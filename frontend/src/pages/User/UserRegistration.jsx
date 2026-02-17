@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { AlertCircle, Upload, X, Check, Eye, EyeOff } from "lucide-react";
+import { AlertCircle, Upload, X, Check, Eye, EyeOff, Link as LinkIcon, Monitor } from "lucide-react";
 
 const BACKEND_API_URL = import.meta.env.VITE_API_URL || "/api";
 const API_BASE = BACKEND_API_URL.endsWith("/api")
@@ -45,6 +45,24 @@ export default function UserRegistration() {
     photo: null,
     payslips: null,
     lastBreakup: null,
+  });
+
+  // URL states for document links (Section 3)
+  const [fileUrls, setFileUrls] = useState({
+    resume: "",
+    idProof: "",
+    photo: "",
+    payslips: "",
+    lastBreakup: "",
+  });
+
+  // Upload method: "file" or "url"
+  const [uploadMethod, setUploadMethod] = useState({
+    resume: "file",
+    idProof: "file",
+    photo: "file",
+    payslips: "file",
+    lastBreakup: "file",
   });
 
   const [currentStep, setCurrentStep] = useState(1);
@@ -117,6 +135,7 @@ export default function UserRegistration() {
 
   const removeFile = (fieldName) => {
     setFiles((prev) => ({ ...prev, [fieldName]: null }));
+    setFileUrls((prev) => ({ ...prev, [fieldName]: "" }));
     if (fileInputRefs[fieldName]?.current) {
       fileInputRefs[fieldName].current.value = "";
     }
@@ -142,6 +161,12 @@ export default function UserRegistration() {
     } else if (!/^[0-9]{10}$/.test(formData.phone.replace(/\D/g, ""))) {
       errors.phone = "Please enter a valid 10-digit phone number";
     }
+    if (!formData.dateOfBirth) {
+      errors.dateOfBirth = "Date of birth is required";
+    }
+    if (!formData.preferredLocation.trim()) {
+      errors.preferredLocation = "Preferred location is required";
+    }
     if (!formData.willingToRelocate) {
       errors.willingToRelocate = "Please select if you're willing to relocate";
     }
@@ -154,19 +179,34 @@ export default function UserRegistration() {
   const validateSection2 = () => {
     const errors = {};
 
+    if (!formData.positionApplied.trim()) {
+      errors.positionApplied = "Position applied for is required";
+    }
+    if (!formData.totalExperience.trim()) {
+      errors.totalExperience = "Total experience is required";
+    }
+    if (!formData.highestEducation) {
+      errors.highestEducation = "Highest education is required";
+    }
     if (!formData.noticePeriod) {
       errors.noticePeriod = "Notice period is required";
     }
     if (formData.skills.length === 0) {
       errors.skills = "Please select at least one skill";
     }
+    if (!formData.currentDesignation.trim()) {
+      errors.currentDesignation = "Current designation is required";
+    }
+    if (!formData.currentCTC.trim()) {
+      errors.currentCTC = "Current CTC is required";
+    }
 
-    // Check if experience levels are selected for at least one skill
-    const hasExperienceLevel = Object.values(formData.experienceLevels).some(
+    // Check if experience levels are selected for all skills
+    const allExperienceLevels = Object.values(formData.experienceLevels).every(
       (level) => level !== ""
     );
-    if (!hasExperienceLevel) {
-      errors.experienceLevels = "Please select experience level for at least one skill";
+    if (!allExperienceLevels) {
+      errors.experienceLevels = "Please select experience level for all skills";
     }
 
     setSectionErrors(errors);
@@ -176,16 +216,23 @@ export default function UserRegistration() {
   // Section 3 Validation
   const validateSection3 = () => {
     const errors = {};
+    const urlRegex = /^https?:\/\/.+/i;
 
-    if (!files.resume) {
-      errors.resume = "Resume is required";
-    }
-    if (!files.idProof) {
-      errors.idProof = "ID Proof is required";
-    }
-    if (!files.photo) {
-      errors.photo = "Photo is required";
-    }
+    const validateField = (fieldName, label) => {
+      if (uploadMethod[fieldName] === "file" && !files[fieldName]) {
+        errors[fieldName] = `${label} is required`;
+      } else if (uploadMethod[fieldName] === "url" && !fileUrls[fieldName].trim()) {
+        errors[fieldName] = `${label} URL is required`;
+      } else if (uploadMethod[fieldName] === "url" && !urlRegex.test(fileUrls[fieldName].trim())) {
+        errors[fieldName] = "Please enter a valid URL (starting with http:// or https://)";
+      }
+    };
+
+    validateField("resume", "Resume");
+    validateField("idProof", "ID Proof");
+    validateField("photo", "Photo");
+    validateField("payslips", "Payslips");
+    validateField("lastBreakup", "Last breakup document");
 
     setSectionErrors(errors);
     return Object.keys(errors).length === 0;
@@ -282,12 +329,17 @@ export default function UserRegistration() {
       submitData.append("password", formData.password);
       submitData.append("termsAccepted", formData.termsAccepted);
 
-      // Add files
-      if (files.resume) submitData.append("resume", files.resume);
-      if (files.idProof) submitData.append("idProof", files.idProof);
-      if (files.photo) submitData.append("photo", files.photo);
-      if (files.payslips) submitData.append("payslips", files.payslips);
-      if (files.lastBreakup) submitData.append("lastBreakup", files.lastBreakup);
+      // Add files or URLs
+      const docFields = ["resume", "idProof", "photo", "payslips", "lastBreakup"];
+      const documentUrls = {};
+      docFields.forEach((field) => {
+        if (uploadMethod[field] === "file" && files[field]) {
+          submitData.append(field, files[field]);
+        } else if (uploadMethod[field] === "url" && fileUrls[field].trim()) {
+          documentUrls[field] = fileUrls[field].trim();
+        }
+      });
+      submitData.append("documentUrls", JSON.stringify(documentUrls));
 
       const response = await fetch(`${API_BASE}/candidate-details/register`, {
         method: "POST",
@@ -310,62 +362,163 @@ export default function UserRegistration() {
     }
   };
 
-  // File upload component
-  const FileUploadBox = ({ fieldName, label, description, required = false }) => (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-3">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
+  // File upload component with URL option (like Google Forms)
+  const FileUploadBox = ({ fieldName, label, description, required = false }) => {
+    const method = uploadMethod[fieldName];
+    const hasFile = files[fieldName];
+    const hasUrl = fileUrls[fieldName].trim();
+    const hasValue = (method === "file" && hasFile) || (method === "url" && hasUrl);
 
-      {files[fieldName] ? (
-        <div className="rounded-xl border-2 border-green-300 bg-green-50 p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Check className="text-green-600" size={24} />
-              <div>
+    return (
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          {label} {required && <span className="text-red-500">*</span>}
+        </label>
+
+        {/* Toggle between File and URL */}
+        <div className="flex gap-2 mb-3">
+          <button
+            type="button"
+            onClick={() => {
+              setUploadMethod((prev) => ({ ...prev, [fieldName]: "file" }));
+              setFileUrls((prev) => ({ ...prev, [fieldName]: "" }));
+              if (sectionErrors[fieldName]) setSectionErrors((prev) => ({ ...prev, [fieldName]: "" }));
+            }}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+              method === "file"
+                ? "bg-blue-100 text-blue-700 border border-blue-300"
+                : "bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200"
+            }`}
+          >
+            <Monitor size={14} />
+            Upload from device
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setUploadMethod((prev) => ({ ...prev, [fieldName]: "url" }));
+              setFiles((prev) => ({ ...prev, [fieldName]: null }));
+              if (fileInputRefs[fieldName]?.current) fileInputRefs[fieldName].current.value = "";
+              if (sectionErrors[fieldName]) setSectionErrors((prev) => ({ ...prev, [fieldName]: "" }));
+            }}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+              method === "url"
+                ? "bg-blue-100 text-blue-700 border border-blue-300"
+                : "bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200"
+            }`}
+          >
+            <LinkIcon size={14} />
+            Paste link / URL
+          </button>
+        </div>
+
+        {/* File upload mode */}
+        {method === "file" && (
+          <>
+            {hasFile ? (
+              <div className="rounded-xl border-2 border-green-300 bg-green-50 p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Check className="text-green-600" size={24} />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        {files[fieldName].name}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {(files[fieldName].size / 1024 / 1024).toFixed(2)} MB
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(fieldName)}
+                    className="rounded-full p-1 hover:bg-red-100"
+                  >
+                    <X className="text-red-500" size={20} />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                className={`rounded-xl border-2 border-dashed ${
+                  sectionErrors[fieldName] ? "border-red-300 bg-red-50" : "border-gray-300 bg-gray-50"
+                } p-10 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors`}
+                onClick={() => fileInputRefs[fieldName]?.current?.click()}
+              >
+                <Upload className="mx-auto text-gray-400 mb-3" size={32} />
                 <p className="text-sm font-medium text-gray-900">
-                  {files[fieldName].name}
+                  Drop your file here or click to browse
                 </p>
-                <p className="text-xs text-gray-500">
-                  {(files[fieldName].size / 1024 / 1024).toFixed(2)} MB
+                <p className="mt-1 text-xs text-gray-500">{description}</p>
+                <input
+                  ref={fileInputRefs[fieldName]}
+                  type="file"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  onChange={(e) => handleFileChange(fieldName, e)}
+                  className="hidden"
+                />
+              </div>
+            )}
+          </>
+        )}
+
+        {/* URL input mode */}
+        {method === "url" && (
+          <>
+            {hasUrl ? (
+              <div className="rounded-xl border-2 border-green-300 bg-green-50 p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Check className="text-green-600" size={24} />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 truncate max-w-xs">
+                        {fileUrls[fieldName]}
+                      </p>
+                      <p className="text-xs text-gray-500">Link attached</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(fieldName)}
+                    className="rounded-full p-1 hover:bg-red-100"
+                  >
+                    <X className="text-red-500" size={20} />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                className={`rounded-xl border-2 ${
+                  sectionErrors[fieldName] ? "border-red-300 bg-red-50" : "border-gray-200 bg-gray-50"
+                } p-6`}
+              >
+                <div className="flex items-center gap-3">
+                  <LinkIcon className="text-gray-400 shrink-0" size={20} />
+                  <input
+                    type="url"
+                    placeholder="Paste Google Drive, Dropbox, or any URL here..."
+                    value={fileUrls[fieldName]}
+                    onChange={(e) => {
+                      setFileUrls((prev) => ({ ...prev, [fieldName]: e.target.value }));
+                      if (sectionErrors[fieldName]) setSectionErrors((prev) => ({ ...prev, [fieldName]: "" }));
+                    }}
+                    className="w-full bg-transparent text-sm focus:outline-none placeholder-gray-400"
+                  />
+                </div>
+                <p className="mt-2 text-xs text-gray-400">
+                  Paste a link from Google Drive, Dropbox, OneDrive, or any accessible URL
                 </p>
               </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => removeFile(fieldName)}
-              className="rounded-full p-1 hover:bg-red-100"
-            >
-              <X className="text-red-500" size={20} />
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div
-          className={`rounded-xl border-2 border-dashed ${
-            sectionErrors[fieldName] ? "border-red-300 bg-red-50" : "border-gray-300 bg-gray-50"
-          } p-10 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors`}
-          onClick={() => fileInputRefs[fieldName]?.current?.click()}
-        >
-          <Upload className="mx-auto text-gray-400 mb-3" size={32} />
-          <p className="text-sm font-medium text-gray-900">
-            Drop your file here or click to browse
-          </p>
-          <p className="mt-1 text-xs text-gray-500">{description}</p>
-          <input
-            ref={fileInputRefs[fieldName]}
-            type="file"
-            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-            onChange={(e) => handleFileChange(fieldName, e)}
-            className="hidden"
-          />
-        </div>
-      )}
-      {sectionErrors[fieldName] && (
-        <p className="mt-2 text-sm text-red-600">{sectionErrors[fieldName]}</p>
-      )}
-    </div>
-  );
+            )}
+          </>
+        )}
+
+        {sectionErrors[fieldName] && (
+          <p className="mt-2 text-sm text-red-600">{sectionErrors[fieldName]}</p>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -516,20 +669,25 @@ export default function UserRegistration() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Date of Birth
+                    Date of Birth <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="date"
                     name="dateOfBirth"
                     value={formData.dateOfBirth}
                     onChange={handleInputChange}
-                    className="w-full h-11 rounded-lg border border-gray-300 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+                    className={`w-full h-11 rounded-lg border ${
+                      sectionErrors.dateOfBirth ? "border-red-300" : "border-gray-300"
+                    } px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600`}
                   />
+                  {sectionErrors.dateOfBirth && (
+                    <p className="mt-1 text-sm text-red-600">{sectionErrors.dateOfBirth}</p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Preferred Location
+                    Preferred Location <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -537,8 +695,13 @@ export default function UserRegistration() {
                     value={formData.preferredLocation}
                     onChange={handleInputChange}
                     placeholder="e.g., Bangalore, Mumbai"
-                    className="w-full h-11 rounded-lg border border-gray-300 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+                    className={`w-full h-11 rounded-lg border ${
+                      sectionErrors.preferredLocation ? "border-red-300" : "border-gray-300"
+                    } px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600`}
                   />
+                  {sectionErrors.preferredLocation && (
+                    <p className="mt-1 text-sm text-red-600">{sectionErrors.preferredLocation}</p>
+                  )}
                 </div>
 
                 <div>
@@ -579,7 +742,7 @@ export default function UserRegistration() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Position Applied For
+                    Position Applied For <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -587,13 +750,18 @@ export default function UserRegistration() {
                     value={formData.positionApplied}
                     onChange={handleInputChange}
                     placeholder="e.g., RPA Developer, Python Developer"
-                    className="w-full h-11 rounded-lg border border-gray-300 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+                    className={`w-full h-11 rounded-lg border ${
+                      sectionErrors.positionApplied ? "border-red-300" : "border-gray-300"
+                    } px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600`}
                   />
+                  {sectionErrors.positionApplied && (
+                    <p className="mt-1 text-sm text-red-600">{sectionErrors.positionApplied}</p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Years of Experience
+                    Years of Experience <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -601,19 +769,26 @@ export default function UserRegistration() {
                     value={formData.totalExperience}
                     onChange={handleInputChange}
                     placeholder="e.g., 2 years"
-                    className="w-full h-11 rounded-lg border border-gray-300 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+                    className={`w-full h-11 rounded-lg border ${
+                      sectionErrors.totalExperience ? "border-red-300" : "border-gray-300"
+                    } px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600`}
                   />
+                  {sectionErrors.totalExperience && (
+                    <p className="mt-1 text-sm text-red-600">{sectionErrors.totalExperience}</p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Highest Education
+                    Highest Education <span className="text-red-500">*</span>
                   </label>
                   <select
                     name="highestEducation"
                     value={formData.highestEducation}
                     onChange={handleInputChange}
-                    className="w-full h-11 rounded-lg border border-gray-300 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    className={`w-full h-11 rounded-lg border ${
+                      sectionErrors.highestEducation ? "border-red-300" : "border-gray-300"
+                    } px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600`}
                   >
                     <option value="">Select education</option>
                     <option value="High School">High School</option>
@@ -622,6 +797,9 @@ export default function UserRegistration() {
                     <option value="Master's">Master's Degree</option>
                     <option value="PhD">PhD</option>
                   </select>
+                  {sectionErrors.highestEducation && (
+                    <p className="mt-1 text-sm text-red-600">{sectionErrors.highestEducation}</p>
+                  )}
                 </div>
 
                 <div>
@@ -717,7 +895,7 @@ export default function UserRegistration() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Current Designation
+                    Current Designation <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -725,13 +903,18 @@ export default function UserRegistration() {
                     value={formData.currentDesignation}
                     onChange={handleInputChange}
                     placeholder="e.g., Software Developer"
-                    className="w-full h-11 rounded-lg border border-gray-300 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    className={`w-full h-11 rounded-lg border ${
+                      sectionErrors.currentDesignation ? "border-red-300" : "border-gray-300"
+                    } px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600`}
                   />
+                  {sectionErrors.currentDesignation && (
+                    <p className="mt-1 text-sm text-red-600">{sectionErrors.currentDesignation}</p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Current CTC (LPA)
+                    Current CTC (LPA) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -739,8 +922,13 @@ export default function UserRegistration() {
                     value={formData.currentCTC}
                     onChange={handleInputChange}
                     placeholder="e.g., 8.5"
-                    className="w-full h-11 rounded-lg border border-gray-300 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    className={`w-full h-11 rounded-lg border ${
+                      sectionErrors.currentCTC ? "border-red-300" : "border-gray-300"
+                    } px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600`}
                   />
+                  {sectionErrors.currentCTC && (
+                    <p className="mt-1 text-sm text-red-600">{sectionErrors.currentCTC}</p>
+                  )}
                 </div>
               </div>
             )}
@@ -774,13 +962,15 @@ export default function UserRegistration() {
                 <FileUploadBox
                   fieldName="payslips"
                   label="Payslips (Last 3)"
-                  description="PDF, DOC up to 10MB (Optional)"
+                  description="PDF, DOC up to 10MB"
+                  required
                 />
 
                 <FileUploadBox
                   fieldName="lastBreakup"
                   label="Last Breakup"
-                  description="PDF, DOC up to 10MB (Optional)"
+                  description="PDF, DOC up to 10MB"
+                  required
                 />
               </div>
             )}
@@ -838,6 +1028,15 @@ export default function UserRegistration() {
                           <Check className="text-green-500" size={16} />
                           <span className="capitalize">{key.replace(/([A-Z])/g, " $1").trim()}:</span>
                           <span className="text-gray-600">{file.name}</span>
+                        </div>
+                      )
+                    ))}
+                    {Object.entries(fileUrls).map(([key, url]) => (
+                      url && (
+                        <div key={`url-${key}`} className="flex items-center gap-2 text-sm">
+                          <LinkIcon className="text-blue-500" size={16} />
+                          <span className="capitalize">{key.replace(/([A-Z])/g, " $1").trim()}:</span>
+                          <span className="text-gray-600 truncate max-w-xs">{url}</span>
                         </div>
                       )
                     ))}

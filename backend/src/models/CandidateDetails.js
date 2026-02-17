@@ -8,18 +8,18 @@ const candidateDetailsSchema = new mongoose.Schema(
     lastName: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     phone: { type: String, required: true, trim: true },
-    dateOfBirth: { type: Date },
-    preferredLocation: { type: String, trim: true },
-    willingToRelocate: { type: String, enum: ["Yes", "No", ""] },
+    dateOfBirth: { type: Date, required: true },
+    preferredLocation: { type: String, required: true, trim: true },
+    willingToRelocate: { type: String, required: true, enum: ["Yes", "No"] },
 
     // Professional Details (Section 2)
-    positionApplied: { type: String, trim: true },
-    totalExperience: { type: String, trim: true },
-    highestEducation: { type: String, trim: true },
-    skills: [{ type: String }],
-    noticePeriod: { type: String, trim: true },
-    currentDesignation: { type: String, trim: true },
-    currentCTC: { type: String, trim: true },
+    positionApplied: { type: String, required: true, trim: true },
+    totalExperience: { type: String, required: true, trim: true },
+    highestEducation: { type: String, required: true, trim: true },
+    skills: { type: [String], required: true, validate: v => v.length > 0 },
+    noticePeriod: { type: String, required: true, trim: true },
+    currentDesignation: { type: String, required: true, trim: true },
+    currentCTC: { type: String, required: true, trim: true },
 
     // Experience Levels
     experienceLevels: {
@@ -61,6 +61,9 @@ const candidateDetailsSchema = new mongoose.Schema(
 
     // Terms acceptance
     termsAccepted: { type: Boolean, default: false },
+
+    // Attendance - set to true when candidate logs in
+    attendance: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
