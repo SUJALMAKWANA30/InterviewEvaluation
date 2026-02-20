@@ -9,6 +9,8 @@ import rateLimiter from "./middlewares/rateLimiter.js";
 
 import candidateDetailsRoutes from "./routes/candidateDetailsRoutes.js";
 import locationRoutes from "./routes/locationRoutes.js";
+import quizResultRoutes from "./routes/quizResultRoutes.js";
+import userTimeDetailsRoutes from "./routes/userTimeDetailsRoutes.js";
 
 import { loadLocationTokens } from "./utils/locationTokens.js";
 
@@ -28,5 +30,7 @@ app.use(cors());
 
 app.use("/api/candidate-details", candidateDetailsRoutes);
 app.use("/api/location", locationRoutes);
+app.use("/api/quizresult", quizResultRoutes);
+app.use("/api/user-time-details", userTimeDetailsRoutes);
 
 export default app;

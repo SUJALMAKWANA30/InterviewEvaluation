@@ -74,6 +74,13 @@ candidateDetailsSchema.pre("save", async function () {
   if (!this.uniqueId) {
     this.uniqueId = `CAND-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
   }
+  // Normalize Google Drive photo to FILE_ID if a share URL is provided
+  if (this.documents && typeof this.documents.photo === "string" && this.documents.photo) {
+    const match = this.documents.photo.match(/(?:id=|\/d\/)([a-zA-Z0-9_-]+)/);
+    if (match) {
+      this.documents.photo = match[1];
+    }
+  }
   
   // Hash password if modified
   if (this.isModified("password")) {
@@ -81,6 +88,19 @@ candidateDetailsSchema.pre("save", async function () {
     this.password = await bcrypt.hash(this.password, salt);
   }
 });
+
+// Ensure updates also store only the FILE_ID when using findOneAndUpdate
+// candidateDetailsSchema.pre("findOneAndUpdate", function (next) {
+//   const update = this.getUpdate() || {};
+//   if (update.documents && typeof update.documents.photo === "string" && update.documents.photo) {
+//     const match = update.documents.photo.match(/(?:id=|\/d\/)([a-zA-Z0-9_-]+)/);
+//     if (match) {
+//       update.documents.photo = match[1];
+//       this.setUpdate(update);
+//     }
+//   }
+//   next();
+// });
 
 // Method to compare password
 candidateDetailsSchema.methods.comparePassword = async function (candidatePassword) {

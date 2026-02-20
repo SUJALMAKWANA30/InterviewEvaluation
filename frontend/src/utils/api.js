@@ -10,6 +10,7 @@
  */
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || '/api';
+const API_BASE = API_BASE_URL.endsWith('/api') ? API_BASE_URL : `${API_BASE_URL}/api`;
 
 /**
  * Get authorization headers
@@ -432,6 +433,91 @@ export const candidateDetailsAPI = {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(updateData),
+    });
+    return handleResponse(response);
+  },
+};
+
+// ==================== QUIZ RESULT APIs ====================
+
+export const quizResultAPI = {
+  saveQuizResult: async (quizResultData) => {
+    const response = await fetch(`${API_BASE}/quizresult`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(quizResultData),
+    });
+    return handleResponse(response);
+  },
+  getAllQuizResults: async () => {
+    const response = await fetch(`${API_BASE}/quizresult`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+  getQuizResultById: async (id) => {
+    const response = await fetch(`${API_BASE}/quizresult/${id}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+  getQuizResultByEmail: async (email) => {
+    const response = await fetch(`${API_BASE}/quizresult/email/${email}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+};
+
+// ==================== USER TIME DETAILS APIs ====================
+export const userTimeDetailsAPI = {
+  register: async (payload) => {
+    const response = await fetch(`${API_BASE}/user-time-details/register`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(response);
+  },
+  getByEmail: async (email) => {
+    const response = await fetch(`${API_BASE}/user-time-details/email/${encodeURIComponent(email)}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+  start: async () => {
+    const response = await fetch(`${API_BASE}/user-time-details/start`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+  end: async () => {
+    const response = await fetch(`${API_BASE}/user-time-details/end`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+  complete: async () => {
+    const response = await fetch(`${API_BASE}/user-time-details/complete`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+};
+
+// ==================== CANDIDATE DETAILS ME ====================
+export const candidateMeAPI = {
+  getMe: async () => {
+    const response = await fetch(`${API_BASE}/candidate-details/me`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
     });
     return handleResponse(response);
   },

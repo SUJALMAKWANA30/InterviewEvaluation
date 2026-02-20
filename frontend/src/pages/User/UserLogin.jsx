@@ -41,16 +41,14 @@ export default function UserLogin() {
         throw new Error(data.message || 'Login failed');
       }
 
-      // Store auth data
+      // Store only auth token
       localStorage.setItem('authToken', data.token);
-      localStorage.setItem('userType', 'user');
-      localStorage.setItem('userData', JSON.stringify({
-        id: data.candidate.id,
-        email: data.candidate.email,
-        firstName: data.candidate.firstName,
-        lastName: data.candidate.lastName,
-        uniqueId: data.candidate.uniqueId,
-      }));
+      // Cleanup other localStorage keys if present
+      localStorage.removeItem('userType');
+      localStorage.removeItem('userData');
+      localStorage.removeItem('examStartTime');
+      localStorage.removeItem('examDuration');
+      localStorage.removeItem('examInProgress');
 
       toast.success('Login Successful! You may start your exam now.', {
         duration: 3000,

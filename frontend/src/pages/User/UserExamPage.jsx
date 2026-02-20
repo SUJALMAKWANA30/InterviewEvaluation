@@ -1,158 +1,102 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, LogOut, CheckCircle, Clock } from 'lucide-react';
+import tecnoprism from './tecnoprism.webp';
+import { useNavigate } from 'react-router-dom';
+import { AlertCircle, LogOut, CheckCircle, Clock, Zap, Bell } from 'lucide-react';
 import ExamTimer from '../../components/Admin/ExamTimer';
+import { candidateMeAPI, userTimeDetailsAPI, quizResultAPI } from '../../utils/api';
 
 // Backend API URL for fetching exam form
 const BACKEND_API_URL = import.meta.env.VITE_API_URL || '/api';
 
 // Fallback URL from env (used if backend is unavailable)
-const FALLBACK_FORM_URL = import.meta.env.VITE_EXAM_FORM_URL || 'https://quiz.everestwebdeals.co/?form=023e8cc48ceb1b1168973f3addce09a8';
+// const FALLBACK_FORM_URL = import.meta.env.VITE_EXAM_FORM_URL || 'https://quiz.everestwebdeals.co/?form=023e8cc48ceb1b1168973f3addce09a8';
 
 export default function UserExamPage() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [examStatus, setExamStatus] = useState('not-started');
   const [examDuration, setExamDuration] = useState(30);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const [showExam, setShowExam] = useState(false);
-  const [examStartTime, setExamStartTime] = useState(null);
-  const [examFormUrl, setExamFormUrl] = useState(null);
-  const [hasAlreadyStarted, setHasAlreadyStarted] = useState(false); // Track if exam was already taken
-  const [showEmailAlert, setShowEmailAlert] = useState(false); // Email login alert modal
+  const [hasAlreadyStarted, setHasAlreadyStarted] = useState(false);
+  const [showEmailAlert, setShowEmailAlert] = useState(false);
+  const [totalScore, setTotalScore] = useState(null);
+  const [userPhoto, setUserPhoto] = useState(null);
+
+  const getPhotoSrc = (val) => {
+    if (!val) return null;
+    if (/^https?:\/\//i.test(val)) {
+      const m = val.match(/(?:id=|\/d\/)([a-zA-Z0-9_-]+)/);
+      if (m) return `https://drive.google.com/thumbnail?id=${m[1]}&sz=w200`;
+      return val;
+    }
+    return `https://drive.google.com/thumbnail?id=${val}&sz=w200`;
+  };
 
   useEffect(() => {
-    fetchUserData();
-    fetchExamSettings();
+    (async () => {
+      try {
+        const me = await candidateMeAPI.getMe();
+        if (me?.success && me.data) {
+          setUser({
+            firstName: me.data.firstName || 'Candidate',
+            lastName: me.data.lastName || '',
+            uniqueId: me.data.uniqueId || '',
+            email: me.data.email,
+            phone: me.data.phone || 'N/A',
+            documents: me.data.documents || {},
+          });
+          try {
+            const time = await userTimeDetailsAPI.getByEmail(me.data.email).catch(() => null);
+            const record = time?.data || null;
+            const anyTime = !!(record?.startTime || record?.endTime || record?.completionTime);
+            if (anyTime) {
+              setHasAlreadyStarted(true);
+              if (record?.completionTime || record?.endTime) {
+                setExamStatus('completed');
+              } else {
+                setExamStatus('in-progress');
+              }
+            }
+            if (record?.photo) {
+              setUserPhoto(record.photo);
+            }
+            try {
+              const qr = await quizResultAPI.getQuizResultByEmail(me.data.email);
+              if (qr?.success && qr.data) {
+                setTotalScore(qr.data.totalMarks ?? null);
+              }
+            } catch { /* ignore quiz fetch errors */ }
+          } catch { /* ignore */ }
+        }
+      } catch (err) {
+        console.error('Error fetching user data:', err);
+      } finally {
+        setLoading(false);
+      }
+    })();
+    (async () => {
+      try {
+        const response = await fetch(`${BACKEND_API_URL}/event/location-settings`, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('authToken')}`,
+          },
+        });
+        const data = await response.json();
+        setExamDuration(data.examDuration || 30);
+      } catch (err) {
+        console.error('Failed to fetch exam settings:', err);
+      }
+    })();
   }, []);
 
-  const fetchUserData = async () => {
-    try {
-      // Get email from localStorage (set during login)
-      const userDataStr = localStorage.getItem('userData');
-      const userData = userDataStr ? JSON.parse(userDataStr) : null;
-      const email = userData?.email;
+  // Removed: redirect to /quiz on dashboard refresh to prevent unexpected navigation
+  // Refreshing the MCQ page preserves timer via persisted startTime; dashboard refresh stays on dashboard.
 
-      if (!email) {
-        setLoading(false);
-        return;
-      }
-
-      // Fetch only logged-in user's details from remote backend
-      const remoteUrl = `https://tecnoprismmainbackend.onrender.com/details?email=${encodeURIComponent(email)}`;
-
-      try {
-        const response = await fetch(remoteUrl);
-
-        if (response.ok) {
-          const data = await response.json();
-
-          // Get user data from response (API returns single user matching email)
-          if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-            const foundUser = data.data[0];
-
-            setUser({
-              firstName: foundUser['Full Name']?.split(' ')[0] || 'Candidate',
-              lastName: foundUser['Full Name']?.split(' ').slice(1).join(' ') || '',
-              uniqueId: foundUser['uniqueId'] || foundUser['unique id'] || foundUser['_id'] || '',
-              email: foundUser['Email Address'] || foundUser['Email address'] || email,
-              phone: foundUser['Phone number'] || 'N/A',
-              location: foundUser['Preferred Location'] || foundUser['Location'] || '',
-              skills: foundUser['Skills'] || '',
-              experience: foundUser['Total Experience (Years)'] || '',
-              currentCtc: foundUser['Current CTC'] || '',
-              noticePeriod: foundUser['Notice Period'] || '',
-              photo: foundUser['Photo'] || '',
-              resume: foundUser['Resume'] || '',
-            });
-            // Check if exam was already started
-            await checkExamStatus(email);
-            setLoading(false);
-            return;
-          }
-        }
-      } catch (remoteErr) {
-        // Remote API not available, will use fallback
-      }
-
-      // Fallback: Use email from localStorage to construct user data
-      setUser({
-        firstName: 'Candidate',
-        lastName: '',
-        uniqueId: `WALK-${Date.now()}`,
-        email: email,
-        phone: 'N/A',
-      });
-      // Check if exam was already started
-      await checkExamStatus(email);
-
-    } catch (err) {
-      console.error('Error fetching user data:', err);
-      // Still show user info with email
-      const userDataStr = localStorage.getItem('userData');
-      const userData = userDataStr ? JSON.parse(userDataStr) : null;
-      if (userData?.email) {
-        setUser({
-          firstName: 'Candidate',
-          lastName: '',
-          uniqueId: `WALK-${Date.now()}`,
-          email: userData.email,
-          phone: 'N/A',
-        });
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchExamSettings = async () => {
-    try {
-      const response = await fetch(`${BACKEND_API_URL}/event/location-settings`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('authToken')}`,
-        },
-      });
-      const data = await response.json();
-      setExamDuration(data.examDuration || 30);
-    } catch (err) {
-      console.error('Failed to fetch exam settings:', err);
-    }
-  };
-
-  // Check if candidate has already started/completed exam
-  const checkExamStatus = async (email) => {
-    if (!email) return;
-    
-    try {
-      // Check time-details API for existing start time
-      const response = await fetch('https://tecnoprismmainbackend.onrender.com/time-details/all');
-      if (response.ok) {
-        const data = await response.json();
-        const timeDetails = data.data || data || [];
-        
-        // Find if this user has already started exam
-        const userTimeData = timeDetails.find(
-          (item) => (item.Username || item.username || item.email || '').toLowerCase() === email.toLowerCase()
-        );
-        
-        if (userTimeData && userTimeData.startTime) {
-          setHasAlreadyStarted(true);
-          
-          // If they also have completion time, mark as completed
-          if (userTimeData.CompletionTime || userTimeData.completionTime || userTimeData.endTime) {
-            setExamStatus('completed');
-          }
-        }
-      }
-    } catch (err) {
-      // Silently handle error - not critical for user experience
-    }
-  };
+  // Check if candidate has already started/completed exam - omitted in this flow
 
   const handleStartExam = async () => {
-    // Show email alert modal first
     setShowEmailAlert(true);
-    
-    // Auto-dismiss after 10 seconds
     setTimeout(() => {
       setShowEmailAlert(false);
     }, 10000);
@@ -161,197 +105,21 @@ export default function UserExamPage() {
   // Called when user acknowledges the alert
   const proceedToExam = async () => {
     setShowEmailAlert(false);
-    
+
     try {
-      // Get user email from localStorage
-      const userDataStr = localStorage.getItem('userData');
-      const userData = userDataStr ? JSON.parse(userDataStr) : null;
-      const email = userData?.email;
-
-      if (!email) {
-        setError('User email not found. Please log in again.');
-        return;
-      }
-
-      // Generate current timestamp with timezone offset
-      const now = new Date();
-      const timezoneOffset = -now.getTimezoneOffset();
-      const offsetHours = Math.floor(Math.abs(timezoneOffset) / 60);
-      const offsetMinutes = Math.abs(timezoneOffset) % 60;
-      const offsetSign = timezoneOffset >= 0 ? '+' : '-';
-      const timezoneString = `${offsetSign}${String(offsetHours).padStart(2, '0')}:${String(offsetMinutes).padStart(2, '0')}`;
-      
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      const hours = String(now.getHours()).padStart(2, '0');
-      const minutes = String(now.getMinutes()).padStart(2, '0');
-      const seconds = String(now.getSeconds()).padStart(2, '0');
-      
-      const startTime = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${timezoneString}`;
-
-      // Try to POST start time to API (non-blocking - exam will start even if this fails)
-      try {
-        const response = await fetch('https://tecnoprismmainbackend.onrender.com/time-details/start', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            email: email,
-            startTime: startTime
-          })
-        });
-
-        // Response handled silently
-      } catch (apiErr) {
-        // API not available, but continuing with exam
-      }
-
-      // Fetch exam form URL from backend proxy (with fallback)
-      let formUrl = FALLBACK_FORM_URL; // Default fallback
-      try {
-        const formResponse = await fetch(`${BACKEND_API_URL}/api/exam/get-form-url`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            email: email,
-            token: localStorage.getItem('authToken')
-          })
-        });
-
-        if (formResponse.ok) {
-          const formData = await formResponse.json();
-          if (formData.success && formData.formUrl) {
-            formUrl = formData.formUrl;
-          }
-        }
-      } catch (formErr) {
-        // Backend not available, using fallback URL
-      }
-
-      // Set the form URL (from backend or fallback)
-      setExamFormUrl(formUrl);
-
-      // Proceed to show the exam
-      setShowExam(true);
+      await userTimeDetailsAPI.start();
+      setHasAlreadyStarted(true);
       setExamStatus('in-progress');
-      setExamStartTime(new Date());
-      setError(''); // Clear any previous errors
-      
+      setError('');
+      navigate('/quiz');
+
     } catch (err) {
-      setError('Failed to start exam. Please try again.');
+      setError(err?.message || 'Failed to start exam. Please log in again and retry.');
     }
   };
-
-  const handleTimeUp = async () => {
-    try {
-      const response = await fetch(`${BACKEND_API_URL}/exam/end`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('authToken')}`,
-        },
-      });
-
-      if (response.ok) {
-        setExamStatus('completed');
-        setShowExam(false);
-      }
-    } catch (err) {
-      console.error('Error ending exam:', err);
-    }
-  };
-
-  const handleSubmitExam = async () => {
-    try {
-      // Get user email from localStorage
-      const userDataStr = localStorage.getItem('userData');
-      const userData = userDataStr ? JSON.parse(userDataStr) : null;
-      const username = userData?.email;
-
-      if (!username) {
-        setError('User email not found.');
-        return;
-      }
-
-      // Generate end timestamp
-      const now = new Date();
-      const timezoneOffset = -now.getTimezoneOffset();
-      const offsetHours = Math.floor(Math.abs(timezoneOffset) / 60);
-      const offsetMinutes = Math.abs(timezoneOffset) % 60;
-      const offsetSign = timezoneOffset >= 0 ? '+' : '-';
-      const timezoneString = `${offsetSign}${String(offsetHours).padStart(2, '0')}:${String(offsetMinutes).padStart(2, '0')}`;
-
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      const hours = String(now.getHours()).padStart(2, '0');
-      const minutes = String(now.getMinutes()).padStart(2, '0');
-      const seconds = String(now.getSeconds()).padStart(2, '0');
-
-      const endTime = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${timezoneString}`;
-
-      // POST to time-details/end API (if exists)
-      try {
-        await fetch('https://tecnoprismmainbackend.onrender.com/time-details/end', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            username: username,
-            endTime: endTime
-          })
-        });
-      } catch (e) {
-        // End time API not available, continuing silently
-      }
-
-      // Mark exam as completed
-      setShowExam(false);
-      setExamStatus('completed');
-    } catch (err) {
-      console.error('Error submitting exam:', err);
-      setError('Failed to submit exam. Please try again.');
-    }
-  };
-
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
-
-  // Calculate remaining time
-  const [remainingTime, setRemainingTime] = useState(null);
-
-  useEffect(() => {
-    if (showExam && examStartTime) {
-      const totalSeconds = examDuration * 60;
-      
-      const interval = setInterval(() => {
-        const elapsed = Math.floor((new Date() - examStartTime) / 1000);
-        const remaining = totalSeconds - elapsed;
-        
-        if (remaining <= 0) {
-          clearInterval(interval);
-          setRemainingTime(0);
-          handleTimeUp();
-        } else {
-          setRemainingTime(remaining);
-        }
-      }, 1000);
-
-      return () => clearInterval(interval);
-    }
-  }, [showExam, examStartTime, examDuration]);
 
   const handleLogout = () => {
     localStorage.removeItem('authToken');
-    localStorage.removeItem('userType');
     window.location.href = '/user-login';
   };
 
@@ -519,55 +287,6 @@ export default function UserExamPage() {
       fontWeight: '600',
       fontSize: '14px',
     },
-    examContainer: {
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: '#f3f4f6',
-      zIndex: 1000,
-      display: 'flex',
-      flexDirection: 'column',
-    },
-    examHeader: {
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      color: 'white',
-      padding: '12px 24px',
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)',
-    },
-    examHeaderInfo: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '24px',
-    },
-    examIframeWrapper: {
-      flex: 1,
-      overflow: 'hidden',
-      position: 'relative',
-    },
-    examIframe: {
-      width: '100%',
-      height: '100%',
-      border: 'none',
-      background: 'white',
-    },
-    submitButton: {
-      background: '#10b981',
-      color: 'white',
-      padding: '10px 24px',
-      borderRadius: '8px',
-      border: 'none',
-      fontSize: '14px',
-      fontWeight: 'bold',
-      cursor: 'pointer',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px',
-    },
   };
 
   if (loading) {
@@ -585,106 +304,6 @@ export default function UserExamPage() {
           }}></div>
           <p style={{ color: 'white', fontSize: '16px' }}>Loading...</p>
         </div>
-      </div>
-    );
-  }
-
-  // Show embedded exam form
-  if (showExam) {
-    return (
-      <div style={styles.examContainer}>
-        <style>{`
-          @media (max-width: 600px) {
-            .exam-header-mobile {
-              padding: 10px 12px !important;
-              flex-direction: column !important;
-              gap: 8px !important;
-            }
-            .exam-header-mobile > div:first-child {
-              width: 100% !important;
-              text-align: center !important;
-            }
-            .exam-header-mobile button {
-              width: 100% !important;
-              justify-content: center !important;
-            }
-          }
-        `}</style>
-        {/* Exam Header - No Timer */}
-        <div style={styles.examHeader} className="exam-header-mobile">
-          <div style={styles.examHeaderInfo}>
-            <div>
-              <div style={{ fontSize: '18px', fontWeight: 'bold' }}>TecnoPrism Exam</div>
-              <div style={{ fontSize: '12px', opacity: 0.9 }}>{user?.email}</div>
-            </div>
-          </div>
-          <button
-            onClick={handleSubmitExam}
-            style={styles.submitButton}
-            onMouseOver={(e) => e.target.style.background = '#059669'}
-            onMouseOut={(e) => e.target.style.background = '#10b981'}
-          >
-            <CheckCircle size={18} />
-            Submit Exam
-          </button>
-        </div>
-
-        {/* Scrolling Marquee Warning */}
-        <div style={{
-          background: '#fef3c7',
-          borderBottom: '1px solid #fde68a',
-          overflow: 'hidden',
-          whiteSpace: 'nowrap',
-        }}>
-          <div style={{
-            display: 'inline-block',
-            paddingLeft: '100%',
-            animation: 'marquee 20s linear infinite',
-          }}>
-            <span style={{
-              display: 'inline-block',
-              padding: '8px 24px',
-              fontSize: '14px',
-              fontWeight: '600',
-              color: '#92400e',
-            }}>
-              ⚠️ Make Sure You Are Logged In As "{user?.email}" In Google Forms — If Not, Your Response Would Be Invalid! ⚠️
-            </span>
-          </div>
-          <style>{`
-            @keyframes marquee {
-              0% { transform: translateX(0); }
-              100% { transform: translateX(-100%); }
-            }
-          `}</style>
-        </div>
-
-        {/* Iframe Container */}
-        <div style={styles.examIframeWrapper}>
-          {examFormUrl ? (
-            <iframe
-              src={examFormUrl}
-              style={styles.examIframe}
-              title="Exam Form"
-              sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            />
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#6b7280' }}>
-              <p>Loading exam form...</p>
-            </div>
-          )}
-        </div>
-
-        {/* Anti-cheat overlay to prevent right-click and dev tools */}
-        <style>{`
-          /* Disable text selection in exam mode */
-          body {
-            user-select: none;
-            -webkit-user-select: none;
-            -ms-user-select: none;
-          }
-        `}</style>
       </div>
     );
   }
@@ -745,7 +364,7 @@ export default function UserExamPage() {
             }}>
               Make Sure You Are Logged In As{' '}
               <strong style={{ color: '#7c3aed' }}>"{user?.email}"</strong>
-              {' '}In Google Forms — If Not, Your Response Would Be Invalid.
+              {' '}In Interview Evolution System — If Not, Your Response Would Be Invalid.
             </p>
             <button
               onClick={proceedToExam}
@@ -863,211 +482,252 @@ export default function UserExamPage() {
           }
         }
       `}</style>
-      
-      {/* Header */}
-      <div style={styles.header}>
-        <div style={styles.headerContent} className="header-content">
-          <div>
-            <h1 style={styles.title} className="title">Exam Portal</h1>
-            <p style={styles.subtitle}>Walking Interview System</p>
-          </div>
-          <button
-            onClick={handleLogout}
-            style={styles.logoutBtn}
-            className="logout-btn-mobile"
-            onMouseOver={(e) => e.target.style.background = '#b91c1c'}
-            onMouseOut={(e) => e.target.style.background = '#dc2626'}
-          >
-            <LogOut size={16} />
-            Logout
-          </button>
-        </div>
-      </div>
 
-      <div style={styles.mainContent} className="main-content">
-        {/* Error Alert */}
-        {error && (
-          <div style={styles.errorBox}>
-            <AlertCircle size={20} color="#c53030" style={{ marginTop: '2px', flexShrink: 0 }} />
-            <p style={styles.errorText}>{error}</p>
-          </div>
-        )}
+      <div className="min-h-screen bg-[#f8fafc] text-[#1e293b]">
+        <nav className="bg-white/80 backdrop-blur border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-4 py-4">
+  {/* Logo Container with Silver Metallic Effect */}
+  <div className="relative group">
+    {/* Subtle Silver Glow */}
+    <div className="absolute -inset-1 bg-gradient-to-r from-slate-200 to-gray-100 rounded-xl blur opacity-25 group-hover:opacity-50 transition duration-300"></div>
+    
+    <div className="relative bg-white border border-slate-200 shadow-sm p-2 rounded-xl backdrop-blur-sm">
+      <img 
+        src={tecnoprism} 
+        className="w-28 h-auto object-contain" 
+        alt="Tecnoprism Logo" 
+      />
+    </div>
+  </div>
 
-        <div style={styles.gridContainer} className="responsive-grid">
-          {/* Main Content */}
-          <div>
-            {/* User Info Card */}
-              {user ? (
-              <div style={styles.card} className="card">
-                <h2 style={styles.cardTitle}>
-                  Welcome, {user.firstName} {user.lastName}
-                </h2>
-                <div style={styles.userInfoGrid} className="user-info-grid">
-                  <div style={styles.infoBlock}>
-                    <p style={styles.infoLabel}>Email</p>
-                    <p style={styles.infoValue}>{user.email}</p>
-                  </div>
-                  <div style={styles.infoBlock}>
-                    <p style={styles.infoLabel}>Phone</p>
-                    <p style={styles.infoValue}>{user.phone}</p>
-                  </div>
-                  <div style={styles.infoBlock}>
-                    <p style={styles.infoLabel}>Test Duration</p>
-                    <p style={styles.infoValue}>{examDuration} minutes</p>
-                  </div>
+  {/* Text Content */}
+  <div className="flex flex-col">
+    <h1 className="text-xl font-extrabold tracking-tight text-slate-900 leading-tight">
+      Interview <span className="text-slate-500 font-medium">Evaluation System</span>
+    </h1>
+    
+    {/* Subtle Silver Subtitle for Structure */}
+    <div className="flex items-center gap-2 mt-0.5">
+      <span className="h-[1px] w-4 bg-slate-300"></span>
+      <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+        Professional Series
+      </p>
+    </div>
+  </div>
+</div>
+            <div className="flex items-center gap-6">
+              <Bell size={18} className="text-gray-400" />
+              <div className="flex items-center gap-3 border-l pl-6">
+                <div className="w-9 h-9 rounded-full overflow-hidden bg-blue-600/90 flex items-center justify-center text-white text-sm font-bold">
+                  {getPhotoSrc(userPhoto) ? (
+                    <img src={getPhotoSrc(userPhoto)} alt="User Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    `${user?.firstName?.[0] ?? "J"}${user?.lastName?.[0] ?? "D"}`
+                  )}
                 </div>
-              </div>
-            ) : (
-              <div style={styles.card} className="card">
-                <h2 style={styles.cardTitle}>Loading your profile...</h2>
-                <p style={{ color: '#718096' }}>Setting up your exam session. Please wait...</p>
-              </div>
-            )}
-
-            {/* Timer Component */}
-            {examStatus === 'in-progress' && (
-              <ExamTimer duration={examDuration} onTimeUp={handleTimeUp} />
-            )}
-
-            {/* Exam Already Taken Message */}
-            {hasAlreadyStarted && examStatus === 'not-started' && (
-              <div style={{ ...styles.card, ...styles.centerContent }} className="card center-content">
-                <div style={{ ...styles.iconBox, background: '#fef3c7' }} className="icon-box">
-                  <AlertCircle size={40} color="#d97706" />
-                </div>
-                <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#1a202c', marginBottom: '16px' }}>
-                  Exam Already Taken
-                </h2>
-                <p style={{ color: '#718096', marginBottom: '32px', maxWidth: '400px', margin: '0 auto 32px' }}>
-                  You have already started/completed the exam. Each candidate can only take the exam once. Please contact the HR if you have any questions.
-                </p>
                 <button
                   onClick={handleLogout}
-                  style={{ ...styles.startButton, background: '#dc2626' }}
-                  className="start-button"
-                  onMouseOver={(e) => e.target.style.transform = 'translateY(-2px)'}
-                  onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}
+                  className="text-gray-400 hover:text-red-500"
                 >
                   <LogOut size={18} />
-                  Logout
                 </button>
-              </div>
-            )}
-
-            {/* Start Exam Button - Only show if exam not already taken */}
-            {examStatus === 'not-started' && !hasAlreadyStarted && (
-              <div style={{ ...styles.card, ...styles.centerContent }} className="card center-content">
-                <div style={styles.iconBox} className="icon-box">
-                  <CheckCircle size={40} color="#667eea" />
-                </div>
-                <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#1a202c', marginBottom: '16px' }}>
-                  Ready to Begin?
-                </h2>
-                <p style={{ color: '#718096', marginBottom: '32px', maxWidth: '400px', margin: '0 auto 32px' }}>
-                  You are registered and ready to take the exam. Click the button below to start. You will have {examDuration} minutes to complete the test.
-                </p>
-                <button
-                  onClick={handleStartExam}
-                  style={styles.startButton}
-                  className="start-button"
-                  onMouseOver={(e) => e.target.style.transform = 'translateY(-2px)'}
-                  onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}
-                >
-                  Start Exam
-                </button>
-              </div>
-            )}
-
-            {/* Completion Message */}
-            {examStatus === 'completed' && (
-              <div style={{ ...styles.card, ...styles.centerContent }} className="card center-content">
-                <div style={{ ...styles.iconBox, background: '#dcfce7' }} className="icon-box">
-                  <CheckCircle size={40} color="#16a34a" />
-                </div>
-                <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#1a202c', marginBottom: '8px' }}>
-                  Exam Completed!
-                </h2>
-                <p style={{ color: '#718096', marginBottom: '32px' }}>
-                  Your exam has been submitted successfully. Thank you for participating in our walking interview.
-                </p>
-                <button
-                  onClick={handleLogout}
-                  style={{ ...styles.startButton, background: '#667eea' }}
-                  className="start-button"
-                  onMouseOver={(e) => e.target.style.transform = 'translateY(-2px)'}
-                  onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}
-                >
-                  Logout
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Sidebar */}
-          <div>
-            {/* Instructions Card */}
-            <div style={styles.sidebarCard} className="sidebar-card">
-              <h3 style={styles.cardTitle}>Instructions</h3>
-              <ul style={styles.instructionsList}>
-                <li style={styles.instructionItem}>
-                  <span style={styles.instructionNumber}>1.</span>
-                  <span>Read each question carefully</span>
-                </li>
-                <li style={styles.instructionItem}>
-                  <span style={styles.instructionNumber}>2.</span>
-                  <span>Answer all questions in the given time</span>
-                </li>
-                <li style={styles.instructionItem}>
-                  <span style={styles.instructionNumber}>3.</span>
-                  <span>You cannot pause the exam once started</span>
-                </li>
-                <li style={styles.instructionItem}>
-                  <span style={styles.instructionNumber}>4.</span>
-                  <span>Submit when timer reaches zero</span>
-                </li>
-              </ul>
-            </div>
-
-            {/* Important Notes */}
-            <div style={styles.warningBox}>
-              <h3 style={{ fontWeight: 'bold', color: '#92400e', marginBottom: '8px' }}>⚠️ Important</h3>
-              <p style={{ fontSize: '14px', color: '#b45309' }}>
-                Make sure you stay within 10 meters of the venue throughout the exam.
-              </p>
-            </div>
-
-            {/* Status Card */}
-            <div style={styles.sidebarCard} className="sidebar-card">
-              <h3 style={styles.cardTitle}>Status</h3>
-              <div
-                style={{
-                  ...styles.statusBox,
-                  background:
-                    examStatus === 'not-started'
-                      ? '#dbeafe'
-                      : examStatus === 'in-progress'
-                      ? '#dcfce7'
-                      : '#f3e8ff',
-                  color:
-                    examStatus === 'not-started'
-                      ? '#1e40af'
-                      : examStatus === 'in-progress'
-                      ? '#166534'
-                      : '#6b21a8',
-                }}
-                className="status-box"
-              >
-                <p>
-                  {examStatus === 'not-started'
-                    ? 'Pending'
-                    : examStatus === 'in-progress'
-                    ? 'In Progress'
-                    : 'Completed'}
-                </p>
               </div>
             </div>
           </div>
-        </div>
+        </nav>
+        <main className="max-w-7xl mx-auto px-6 py-10">
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex gap-3">
+              <AlertCircle size={18} className="text-red-600" />
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+          )}
+          <div className="grid lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 space-y-8">
+              <section className="bg-white rounded-2xl border border-gray-200 p-8">
+                <div className="flex gap-6 items-center">
+                  <div className="w-16 h-16 rounded-full overflow-hidden bg-blue-600 flex items-center justify-center text-white text-xl font-bold">
+                    {getPhotoSrc(userPhoto) ? (
+                      <img src={getPhotoSrc(userPhoto)} alt="User" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      (user ? `${user.firstName[0]}${user.lastName[0]}` : "..")
+                    )}
+                  </div>
+                  <div>
+                    <h1 className="text-xl font-bold">
+                      {user
+                        ? `${user.firstName} ${user.lastName}`
+                        : "Loading..."}
+                    </h1>
+                    <p className="text-sm text-gray-500">{user?.email}</p>
+                    <div className="flex gap-2 mt-2">
+                    </div>
+                  </div>
+                </div>
+              </section>
+              <section className="bg-white rounded-2xl border border-gray-200 p-8">
+                <h2 className="text-lg font-bold mb-6">Application Progress</h2>
+                {(() => {
+                  const steps = [
+                    { label: 'Round 1 – MCQ Quiz', key: 'mcq' },
+                    { label: 'Round 2 – Communication', key: 'communication' },
+                    { label: 'Round 3 – Logic', key: 'logical' },
+                    { label: 'Round 4 – Python', key: 'python' },
+                    { label: 'Round 5 – RPA', key: 'rpa' },
+                    { label: 'Round 6 – Gen AI', key: 'gen ai' },
+                  ];
+                  return (
+                    <div className="space-y-6 relative pl-4">
+                      <div className="absolute left-4 top-0 bottom-0">
+                        <div className="relative w-8 h-full">
+                          <div className="absolute top-0 bottom-0 w-px bg-gray-200 left-1/2 -translate-x-1/2"></div>
+                        </div>
+                      </div>
+                      {steps.map((s, i) => {
+                        const completed = i === 0; // mark MCQ as completed for now
+                        const colorClass = completed ? 'bg-green-500' : 'bg-yellow-400';
+                        return (
+                          <div key={s.key} className="flex gap-4 items-start relative">
+                            <div className="relative w-8 flex flex-col items-center">
+                              <div
+                                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white ring-2 ring-white shadow ${colorClass}`}
+                              >
+                                {completed ? <CheckCircle size={14} className="text-white" /> : i + 1}
+                              </div>
+                            </div>
+                            <div>
+                              <p className={`font-medium ${i === 0 ? 'text-blue-700' : 'text-gray-800'}`}>
+                                {s.label}
+                                {i === 0 && (
+                                  <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                                    Current-Round
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </section>
+            </div>
+            <aside className="space-y-6">
+              <section className="bg-white rounded-2xl border border-gray-200 p-6">
+                <h3 className="text-xs uppercase text-gray-400 font-bold mb-4">
+                  Quick Action
+                </h3>
+                {examStatus === "not-started" && !hasAlreadyStarted ? (
+                  <button
+                    onClick={handleStartExam}
+                    style={{
+                      width: "100%",
+                      padding: "15px",
+                      borderRadius: "0.75rem",
+                      backgroundColor: "#2563eb",
+                      color: "white",
+                      fontWeight: "bold",
+                      fontSize: "1.125rem",
+                      border: "none",
+                      cursor: "pointer",
+                      boxShadow:
+                        "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+                      transition: "background-color 0.2s",
+                    }}
+                    onMouseOver={(e) =>
+                      (e.target.style.backgroundColor = "#1d4ed8")
+                    }
+                    onMouseOut={(e) =>
+                      (e.target.style.backgroundColor = "#4c7ce1")
+                    }
+                  >
+                    Start Exam
+                  </button>
+                ) : (
+                  <div className="text-center py-4 text-gray-400 border border-dashed rounded-xl">
+                    Exam Locked
+                  </div>
+                )}
+              </section>
+              <section className="bg-white rounded-2xl border border-gray-200 p-6">
+                <p className="text-xs text-gray-400 uppercase">Test Duration</p>
+                <p className="text-lg font-bold">{examDuration} Minutes</p>
+              </section>
+              {/* this is  current round section */}
+              <section className={`relative overflow-hidden rounded-2xl border-b-4 p-6 shadow-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-xl
+  ${examStatus === "in-progress"
+                  ? "bg-gradient-to-br from-emerald-50 to-teal-100 border-emerald-500"
+                  : examStatus === "completed"
+                    ? "bg-gradient-to-br from-blue-50 to-indigo-100 border-indigo-500"
+                    : "bg-gradient-to-br from-orange-50 to-amber-100 border-amber-500"
+                }`}>
+
+                {/* Decorative Background Element */}
+                <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/20 blur-2xl" />
+
+                {/* Header */}
+                <div className="flex items-center justify-between mb-4">
+                  <p className={`text-[11px] font-black uppercase tracking-[0.15em] 
+      ${examStatus === "in-progress" ? "text-emerald-700" : examStatus === "completed" ? "text-indigo-700" : "text-amber-700"}`}>
+                    Current Round
+                  </p>
+
+                  {/* Status Badge */}
+                  <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-3 py-1.5 rounded-full shadow-sm backdrop-blur-md border
+      ${examStatus === "in-progress"
+                      ? "bg-emerald-500 text-white border-emerald-400"
+                      : examStatus === "completed"
+                        ? "bg-indigo-600 text-white border-indigo-500"
+                        : "bg-amber-500 text-white border-amber-400"
+                    }`}
+                  >
+                    <span className="relative flex h-2 w-2">
+                      {examStatus === "in-progress" && (
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                      )}
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                    </span>
+                    {examStatus === "in-progress" ? "ACTIVE NOW" : examStatus === "completed" ? "FINISHED" : "PENDING"}
+                  </span>
+                </div>
+
+                {/* Content */}
+                <div className="relative z-10">
+                  <h3 className="text-lg font-extrabold text-gray-800 leading-tight">
+                    Round 1 – <span className="text-transparent bg-clip-text bg-gradient-to-r from-gray-800 to-gray-500">MCQ Quiz</span>
+                  </h3>
+
+                  <p className="text-[13px] text-gray-600 mt-2 font-medium leading-relaxed">
+                    Multiple-choice assessment designed to evaluate core technical and logical understanding.
+                  </p>
+                </div>
+
+                {/* Footer Accent */}
+                <div className="mt-6 pt-4 border-t border-black/5 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className={`p-1.5 rounded-md ${examStatus === "in-progress" ? "bg-emerald-200" : "bg-orange-200"}`}>
+                      <svg className="w-3 h-3 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <span className="text-xs font-bold text-gray-700">30 mins</span>
+                  </div>
+
+                  <button className={`text-xs font-bold flex items-center gap-1 transition-transform hover:translate-x-1
+      ${examStatus === "in-progress" ? "text-emerald-700" : examStatus === "completed" ? "text-indigo-700" : "text-amber-700"}`}>
+    
+                  </button>
+                </div>
+              </section>
+              <section className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 flex gap-3">
+                <AlertCircle size={18} />
+                Do not refresh or leave the page during the exam.
+              </section>
+            </aside>
+          </div>
+        </main>
       </div>
     </div>
   );

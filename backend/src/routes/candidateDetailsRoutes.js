@@ -6,6 +6,7 @@ import {
   getAllCandidateDetails,
   getCandidateDetailsById,
   updateCandidateDetails,
+  getMe,
 } from "../controllers/candidateDetailsController.js";
 
 const router = express.Router();
@@ -51,9 +52,10 @@ const uploadFields = upload.fields([
 // Auth routes
 router.post("/register", uploadFields, registerCandidate);
 router.post("/login", loginCandidate);
+router.get("/me", getMe);
 
 // CRUD routes
-router.get("/", getAllCandidateDetails);
+// router.get("/", getAllCandidateDetails);
 router.get("/:id", getCandidateDetailsById);
 router.put("/:id", updateCandidateDetails);
 

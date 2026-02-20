@@ -1,6 +1,7 @@
 import CandidateDetails from "../models/CandidateDetails.js";
 import { uploadFileToDrive } from "../services/googleDriveService.js";
 import jwt from "jsonwebtoken";
+import UserTimeDetails from "../models/UserTimeDetails.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production";
 
@@ -189,6 +190,21 @@ export const registerCandidate = async (req, res) => {
         documents: candidate.documents,
       },
     });
+    try {
+      const existing = await UserTimeDetails.findOne({ email: candidate.email.toLowerCase() });
+      if (!existing) {
+        await UserTimeDetails.create({
+          email: candidate.email.toLowerCase(),
+          phone: candidate.phone,
+          firstName: candidate.firstName,
+          lastName: candidate.lastName,
+          photo: (candidate?.documents?.photo || "").toString(),
+          passwordHash: candidate.password,
+        });
+      }
+    } catch (e) {
+      console.warn("Failed to initialize UserTimeDetails:", e.message);
+    }
   } catch (error) {
     console.error("Registration error:", error);
     res.status(500).json({
@@ -246,6 +262,7 @@ export const loginCandidate = async (req, res) => {
       candidate.attendance = true;
       await candidate.save();
     }
+    // Do not reset timing data on login; preserve start/end/completion to enforce single attempt
 
     // Generate JWT token
     const token = jwt.sign(
@@ -328,6 +345,37 @@ export const getCandidateDetailsById = async (req, res) => {
       message: "Error fetching candidate",
       error: error.message,
     });
+  }
+};
+
+/* ===============================
+   GET CURRENT USER (via JWT)
+================================ */
+export const getMe = async (req, res) => {
+  try {
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+    if (!token) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const candidate = await CandidateDetails.findById(decoded.id).select("-password");
+    if (!candidate) {
+      return res.status(404).json({ success: false, message: "Candidate not found" });
+    }
+    res.status(200).json({
+      success: true,
+      data: {
+        id: candidate._id,
+        firstName: candidate.firstName,
+        lastName: candidate.lastName,
+        email: candidate.email,
+        phone: candidate.phone,
+        uniqueId: candidate.uniqueId,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to fetch current user", error: error.message });
   }
 };
 
