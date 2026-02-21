@@ -43,7 +43,7 @@ export default function HRLogin() {
         localStorage.setItem("userRole", matchedUser.Role || "HR");
         localStorage.setItem("userName", matchedUser.username || email);
         toast.success("Login Successful! Welcome HR.");
-        navigate("/hr-dashboard");
+        navigate("/hr-home");
       } else {
         throw new Error(
           "Invalid email or password. Please check your credentials.",
