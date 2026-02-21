@@ -12,7 +12,11 @@ import UserExamPage from "./pages/User/UserExamPage";
 import HRLogin from "./pages/Admin/HRLogin";
 import HRDashboard from "./pages/Admin/HRDashboard";
 import HRHome from "./pages/Admin/HRHome";
+import ExamList from "./pages/Admin/ExamList";
+import ExamBuilder from "./pages/Admin/ExamBuilder";
 import HRLayout from "./layout/HRLayout";
+
+// Utility Components
 import LocationGate from "./components/Admin/LocationGate";
 
 // Redirect Component to preserve query params
@@ -50,6 +54,9 @@ function App() {
     <BrowserRouter>
       <Toaster position="top-center" />
       <Routes>
+        {/* =========================================== 
+            User Routes 
+            =========================================== */}
         {/* Public Routes - Protected by Location */}
         <Route path="/" element={<RedirectWithParams to="/user-login" />} />
         <Route
@@ -62,7 +69,6 @@ function App() {
         />
         {/* <Route path="/user-login" element={<UserLogin />} /> */}
         <Route path="/user-register" element={<UserRegistration />} />
-
         {/* Protected User Routes */}
         <Route
           path="/user-dashboard"
@@ -73,23 +79,43 @@ function App() {
           }
         />
 
+        {/* =========================================== 
+            Admin Routes - Protected by Auth and User Type, with Location Gate on Login 
+            =========================================== */}
         {/* Protected HR Routes */}
         <Route path="/hr-login" element={<HRLogin />} />
-        <Route path="/hr-home"
+        <Route
+          path="/hr-home"
           element={
             <HRLayout>
               <HRHome />
             </HRLayout>
           }
         />
-        <Route path="/hr/candidate-dashboard"
+        <Route
+          path="/hr/candidate-dashboard"
           element={
             <HRLayout>
               <HRDashboard />
             </HRLayout>
           }
         />
-        
+        <Route
+          path="/hr/exam"
+          element={
+            <HRLayout>
+              <ExamList />
+            </HRLayout>
+          }
+        />
+        <Route
+          path="/hr/exams/create"
+          element={
+            <HRLayout>
+              <ExamBuilder />
+            </HRLayout>
+          }
+        />
 
         {/* Catch all - redirect to login */}
         <Route path="*" element={<Navigate to="/user-login" replace />} />

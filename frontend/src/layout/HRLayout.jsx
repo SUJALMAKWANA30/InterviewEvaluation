@@ -11,16 +11,16 @@ export default function HRLayout({ children }) {
       <div className="flex flex-1 flex-col overflow-hidden">
         
         {/* Header */}
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-gray-200 bg-white px-6">
-          <div className="w-96">
+        <header className="flex h-16 shrink-0 items-center justify-end border-b border-gray-200 bg-white px-6">
+          {/* <div className="w-96">
             <input
               type="text"
               placeholder="Search candidates, exams..."
               className="w-full rounded-md border border-gray-200 bg-gray-50 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
             />
-          </div>
+          </div> */}
 
-          <div className="flex items-center gap-6">
+          <div className="flex items-center justify-end gap-6">
             <span className="text-sm font-medium text-gray-700">
               HR Executive
             </span>

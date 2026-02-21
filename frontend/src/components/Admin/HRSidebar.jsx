@@ -10,6 +10,7 @@ import {
   Zap,
   ChevronLeft,
   ChevronRight,
+  LogOut,
 } from "lucide-react";
 
 import { cn } from "../../utils/cn"; // adjust path if needed
@@ -17,7 +18,7 @@ import { cn } from "../../utils/cn"; // adjust path if needed
 const navItems = [
   { label: "Dashboard", href: "/hr-home", icon: LayoutDashboard },
   { label: "Candidates", href: "/hr/candidate-dashboard", icon: Users },
-  { label: "Exams", href: "/hr/exam-builder", icon: FileText },
+  { label: "Exams", href: "/hr/exam", icon: FileText },
   { label: "Rounds", href: "/hr/rounds", icon: GitBranch },
   { label: "Reports", href: "/hr/reports", icon: BarChart3 },
   { label: "Settings", href: "/hr/settings", icon: Settings },
@@ -77,7 +78,7 @@ export default function HrSidebar() {
         <button
           type="button"
           onClick={() => setCollapsed(!collapsed)}
-          className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm text-white/60 transition hover:bg-white/10 hover:text-white"
+          className="flex w-full items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm text-white/60 transition hover:bg-white/10 hover:text-white"
         >
           {collapsed ? (
             <ChevronRight className="h-4 w-4" />
@@ -88,6 +89,22 @@ export default function HrSidebar() {
             </>
           )}
         </button>
+
+        <Link to="/hr-login">
+          <button
+            type="button"
+            className="flex w-full items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm text-white/60 transition hover:bg-white/10 hover:text-white"
+          >
+            {collapsed ? (
+              <LogOut className="h-4 w-4" />
+            ) : (
+              <>
+                <LogOut className="h-4 w-4" />
+                <span>Logout</span>
+              </>
+            )}
+          </button>
+        </Link>
       </div>
     </aside>
   );
