@@ -222,30 +222,6 @@ export const validateExam = (req, res, next) => {
 };
 
 /**
- * Validate schedule creation
- */
-export const validateSchedule = (req, res, next) => {
-  const errors = [];
-  const { candidateIds, round, date } = req.body;
-
-  if (!candidateIds || !Array.isArray(candidateIds) || candidateIds.length < 1) {
-    errors.push("At least one candidate is required.");
-  }
-  if (!round || !["R2", "R3", "R4"].includes(round)) {
-    errors.push("Valid round (R2, R3, R4) is required.");
-  }
-  if (!date) {
-    errors.push("Scheduled date is required.");
-  }
-
-  if (errors.length > 0) {
-    return res.status(400).json({ success: false, message: "Validation failed", errors });
-  }
-
-  next();
-};
-
-/**
  * Validate role creation
  */
 export const validateRole = (req, res, next) => {

@@ -20,6 +20,11 @@ import ExamBuilder from "./pages/Admin/ExamBuilder";
 import DriveManager from "./pages/Admin/DriveManager";
 import ReportsPage from "./pages/Admin/ReportsPage";
 import AuditLogsPage from "./pages/Admin/AuditLogsPage";
+import Candidate360Page from "./pages/Admin/Candidate360Page";
+import ScorecardsPage from "./pages/Admin/ScorecardsPage";
+import DecisionsWorkflowPage from "./pages/Admin/DecisionsWorkflowPage";
+import AnalyticsCockpitPage from "./pages/Admin/AnalyticsCockpitPage";
+import SecuritySettingsPage from "./pages/Admin/SecuritySettingsPage";
 import HRLayout from "./layout/HRLayout";
 
 // Admin
@@ -192,6 +197,54 @@ function App() {
           }
         />
         <Route
+          path="/hr/candidate-360"
+          element={
+            <ProtectedRoute requiredUserType="hr">
+              <HRLayout>
+                <PermissionRoute module="search">
+                  <Candidate360Page />
+                </PermissionRoute>
+              </HRLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/hr/scorecards"
+          element={
+            <ProtectedRoute requiredUserType="hr">
+              <HRLayout>
+                <PermissionRoute module="scorecards">
+                  <ScorecardsPage />
+                </PermissionRoute>
+              </HRLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/hr/decisions"
+          element={
+            <ProtectedRoute requiredUserType="hr">
+              <HRLayout>
+                <PermissionRoute module="decisions">
+                  <DecisionsWorkflowPage />
+                </PermissionRoute>
+              </HRLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/hr/analytics"
+          element={
+            <ProtectedRoute requiredUserType="hr">
+              <HRLayout>
+                <PermissionRoute module="reports">
+                  <AnalyticsCockpitPage />
+                </PermissionRoute>
+              </HRLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/hr/reports"
           element={
             <ProtectedRoute requiredUserType="hr">
@@ -199,6 +252,16 @@ function App() {
                 <PermissionRoute module="reports">
                   <ReportsPage />
                 </PermissionRoute>
+              </HRLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/hr/security"
+          element={
+            <ProtectedRoute requiredUserType="hr">
+              <HRLayout>
+                <SecuritySettingsPage />
               </HRLayout>
             </ProtectedRoute>
           }

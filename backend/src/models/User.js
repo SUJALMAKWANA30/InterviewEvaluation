@@ -35,28 +35,30 @@ const userSchema = new mongoose.Schema(
         ref: "Drive",
       },
     ],
-    // For auto-scheduling: max candidates per day
-    maxCandidateLoad: {
-      type: Number,
-      default: 50,
-    },
-    // Availability for scheduling
-    availability: [
-      {
-        day: {
-          type: String,
-          enum: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-        },
-        startTime: { type: String, default: "09:00" },
-        endTime: { type: String, default: "18:00" },
-      },
-    ],
     lastLogin: {
       type: Date,
       default: null,
     },
     refreshToken: {
       type: String,
+      default: null,
+    },
+    mfaEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    mfaSecret: {
+      type: String,
+      default: null,
+      select: false,
+    },
+    mfaBackupCodes: {
+      type: [String],
+      default: [],
+      select: false,
+    },
+    mfaConfiguredAt: {
+      type: Date,
       default: null,
     },
   },
@@ -80,10 +82,13 @@ userSchema.methods.toJSON = function () {
   const obj = this.toObject();
   delete obj.password;
   delete obj.refreshToken;
+  delete obj.mfaSecret;
+  delete obj.mfaBackupCodes;
   return obj;
 };
 
 userSchema.index({ role: 1 });
 userSchema.index({ isActive: 1 });
+userSchema.index({ mfaEnabled: 1 });
 
 export default mongoose.model("User", userSchema);

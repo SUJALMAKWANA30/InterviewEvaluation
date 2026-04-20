@@ -33,7 +33,6 @@ const actionClass = (action = "") => {
   if (action.startsWith("round.")) return "bg-purple-50 text-purple-700 border-purple-200";
   if (action.startsWith("candidate.")) return "bg-cyan-50 text-cyan-700 border-cyan-200";
   if (action.startsWith("role.") || action.startsWith("user.")) return "bg-amber-50 text-amber-700 border-amber-200";
-  if (action.startsWith("schedule.")) return "bg-green-50 text-green-700 border-green-200";
   if (action.startsWith("exam.") || action.startsWith("drive.")) return "bg-indigo-50 text-indigo-700 border-indigo-200";
   return "bg-gray-50 text-gray-700 border-gray-200";
 };
@@ -120,7 +119,7 @@ export default function AuditLogsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 text-left">Audit Logs</h1>
           <p className="text-sm text-gray-500 text-left mt-1">
-            Recent activity across users, rounds, exams, scheduling, and admin actions
+            Recent activity across users, rounds, exams, and admin actions
           </p>
         </div>
         <button

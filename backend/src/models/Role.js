@@ -29,7 +29,11 @@ const roleSchema = new mongoose.Schema(
             "settings",
             "users",
             "rounds",
-            "scheduling",
+            "audit_logs",
+            "ai",
+            "search",
+            "scorecards",
+            "decisions",
           ],
         },
         actions: [

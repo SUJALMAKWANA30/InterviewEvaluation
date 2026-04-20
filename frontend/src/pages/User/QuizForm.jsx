@@ -10,11 +10,6 @@ import {
 } from "../../constants/quizConstants";
 import {
   formatTime,
-  calculateSectionScore,
-  calculatePercentage,
-  getTotalMarks,
-  getPerformanceMessage,
-  getPerformanceColor,
 } from "../../utils/quizUtils";
 import { quizResultAPI, userTimeDetailsAPI, candidateMeAPI, examAPI } from "../../utils/api";
 
@@ -28,6 +23,7 @@ export default function QuizForm() {
   const [timeLeft, setTimeLeft] = useState(null);
   const [resultMessage, setResultMessage] = useState("");
   const [quizSections, setQuizSections] = useState([]);
+  const [attemptId, setAttemptId] = useState("");
   const [examDurationSeconds, setExamDurationSeconds] = useState(30 * 60);
   const [examLoading, setExamLoading] = useState(true);
   const timeoutTriggeredRef = useRef(false);
@@ -36,6 +32,8 @@ export default function QuizForm() {
   const autoRedirectTimerRef = useRef(null);
   const navigate = useNavigate();
   const finishQuizRef = useRef(null);
+  const attemptIdRef = useRef("");
+  const answersRef = useRef({});
   const tabViolationCount = useRef(0);
   const [tabWarningVisible, setTabWarningVisible] = useState(false);
 
@@ -68,6 +66,11 @@ export default function QuizForm() {
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
+        if (attemptIdRef.current) {
+          examAPI
+            .autosaveAttempt(attemptIdRef.current, answersRef.current, 1)
+            .catch(() => {});
+        }
         tabViolationCount.current += 1;
         const remaining = MAX_TAB_VIOLATIONS - tabViolationCount.current;
         if (remaining <= 0) {
@@ -108,6 +111,7 @@ export default function QuizForm() {
         const res = await examAPI.getActiveExam();
         if (res.success && res.data) {
           const exam = res.data;
+          setAttemptId(exam.attemptId || "");
           const durationMinutes = Number(exam.duration);
           if (Number.isFinite(durationMinutes) && durationMinutes > 0) {
             setExamDurationSeconds(Math.max(60, Math.floor(durationMinutes * 60)));
@@ -126,7 +130,6 @@ export default function QuizForm() {
               codeLanguage: q.codeLanguage || "javascript",
               image: null,
               options: q.options,
-              correctAnswer: q.correctAnswer ?? 0,
             })),
           }));
           setQuizSections(sections);
@@ -142,47 +145,29 @@ export default function QuizForm() {
   }, []);
 
   const finishQuiz = useCallback(async () => {
-    const scores = {};
-    quizSections.forEach((section, index) => {
-      scores[index] = calculateSectionScore(section.questions, answers);
-    });
-    setSectionScores(scores);
-    let meData = {};
     try {
-      const me = await candidateMeAPI.getMe();
-      if (me?.success && me.data) meData = me.data;
-    } catch { void 0; }
-    const sectionWiseMarks = quizSections.map((section, index) => {
-      const sectionScore = scores[index];
-      const totalQuestions = section.questions.length;
-      const correctAnswers = sectionScore;
-      return {
-        sectionName: section.title,
-        marks: sectionScore,
-        totalQuestions: totalQuestions,
-        correctAnswers: correctAnswers,
-      };
-    });
-    const totalScore = Object.values(scores).reduce((a, b) => a + b, 0);
-    const quizResultData = {
-      email: meData.email || "",
-      mobileNumber: meData.phone || "",
-      name:
-        meData.firstName && meData.lastName
-          ? `${meData.firstName} ${meData.lastName}`
-          : meData.firstName || meData.email || "",
-      sectionWiseMarks: sectionWiseMarks,
-      totalMarks: totalScore,
-      driveId: meData.driveId || null,
-    };
-    try {
-      const response = await quizResultAPI.saveQuizResult(quizResultData);
-      if (response.success) {
-        toast.success("Quiz result saved successfully!");
+      if (!attemptId) {
+        throw new Error("Exam attempt was not initialized. Please refresh and try again.");
       }
-    } catch {
-      toast.error("Failed to save quiz result. Please contact support.");
+
+      const response = await quizResultAPI.submitAttempt({ attemptId, answers });
+      if (!response?.success) {
+        throw new Error(response?.message || "Failed to submit quiz.");
+      }
+
+      const savedSections = response?.data?.sectionWiseMarks || [];
+      const scores = {};
+      savedSections.forEach((section, idx) => {
+        scores[idx] = Number(section?.marks || 0);
+      });
+      setSectionScores(scores);
+      toast.success("Quiz submitted successfully!");
+    } catch (submitError) {
+      console.error("Quiz submit failed:", submitError);
+      toast.error(submitError?.message || "Failed to submit quiz. Please contact support.");
+      return;
     }
+
     try {
       await userTimeDetailsAPI.end();
       await userTimeDetailsAPI.complete();
@@ -198,7 +183,7 @@ export default function QuizForm() {
     autoRedirectTimerRef.current = setTimeout(() => {
       navigate("/user-dashboard");
     }, wasTimeout ? 5000 : 10000);
-  }, [answers, navigate, quizSections]);
+  }, [answers, attemptId, navigate]);
 
   useEffect(() => {
     if (examLoading) {
@@ -283,6 +268,25 @@ export default function QuizForm() {
   useEffect(() => {
     finishQuizRef.current = finishQuiz;
   }, [finishQuiz]);
+
+  useEffect(() => {
+    attemptIdRef.current = attemptId;
+  }, [attemptId]);
+
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
+
+  useEffect(() => {
+    if (!attemptId) return;
+    if (Object.keys(answers).length === 0) return;
+
+    const timer = setTimeout(() => {
+      examAPI.autosaveAttempt(attemptId, answers, 0).catch(() => {});
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [attemptId, answers]);
 
   const handleOptionSelect = (optionIndex, questionId) => {
     setAnswers((prev) => ({ ...prev, [questionId]: optionIndex }));

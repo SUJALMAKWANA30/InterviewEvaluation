@@ -152,8 +152,8 @@ export const apiClient = new ApiClient();
 // ============ AUTH APIs ============
 export const authAPI = {
   /** HR Login */
-  loginHR: (email, password) =>
-    apiClient.post("/auth/login", { email, password }),
+  loginHR: (email, password, mfaCode = "", backupCode = "") =>
+    apiClient.post("/auth/login", { email, password, mfaCode, backupCode }),
 
   /** Get HR profile */
   getProfile: () => apiClient.get("/auth/profile"),
@@ -164,6 +164,16 @@ export const authAPI = {
   /** Refresh token */
   refreshToken: (refreshToken) =>
     apiClient.post("/auth/refresh-token", { refreshToken }),
+
+  /** Sessions */
+  getSessions: () => apiClient.get("/auth/sessions"),
+  revokeSession: (id) => apiClient.delete(`/auth/sessions/${id}`),
+
+  /** MFA */
+  getMFAStatus: () => apiClient.get("/auth/mfa/status"),
+  setupMFA: () => apiClient.post("/auth/mfa/setup", {}),
+  enableMFA: (code) => apiClient.post("/auth/mfa/enable", { code }),
+  disableMFA: (payload) => apiClient.post("/auth/mfa/disable", payload),
 };
 
 // ============ ADMIN APIs (Roles & Users) ============
@@ -185,19 +195,6 @@ export const adminAPI = {
   deleteUser: (id) => apiClient.delete(`/admin/users/${id}`),
   getInterviewerNames: () => apiClient.get("/admin/interviewers"),
   getAuditLogs: (params = {}) => apiClient.get("/admin/audit-logs", params),
-};
-
-// ============ SCHEDULE APIs ============
-export const scheduleAPI = {
-  getAll: (params = {}) => apiClient.get("/schedules", params),
-  getById: (id) => apiClient.get(`/schedules/${id}`),
-  create: (data) => apiClient.post("/schedules", data),
-  autoSchedule: (data) => apiClient.post("/schedules/auto-schedule", data),
-  update: (id, data) => apiClient.put(`/schedules/${id}`, data),
-  cancel: (id) => apiClient.patch(`/schedules/${id}/cancel`),
-  getMySchedule: (date) => apiClient.get("/schedules/my-schedule", { date }),
-  getStats: (driveId) =>
-    apiClient.get("/schedules/stats", driveId ? { driveId } : {}),
 };
 
 // ============ CANDIDATE APIs (keep backward compatible) ============
@@ -230,9 +227,58 @@ export const locationAPI = {
 export const examAPI = {
   getAll: (params = {}) => apiClient.get("/exams", params),
   getActive: () => apiClient.get("/exams/active"),
+  getActiveAttempt: (examId) => apiClient.get("/exams/attempts/active", examId ? { examId } : {}),
+  autosaveAttempt: (attemptId, answers, violationIncrement = 0) =>
+    apiClient.post(`/exams/attempts/${attemptId}/autosave`, { answers, violationIncrement }),
   getById: (id) => apiClient.get(`/exams/${id}`),
   create: (data) => apiClient.post("/exams", data),
   update: (id, data) => apiClient.put(`/exams/${id}`, data),
   delete: (id) => apiClient.delete(`/exams/${id}`),
   toggleActive: (id) => apiClient.patch(`/exams/${id}/toggle-active`),
+};
+
+export const quizResultAPI = {
+  getAll: (params = {}) => apiClient.get("/quizresult", params),
+  getById: (id) => apiClient.get(`/quizresult/${id}`),
+  getByEmail: (email) => apiClient.get(`/quizresult/email/${encodeURIComponent(email)}`),
+  updateByEmail: (email, data) =>
+    apiClient.put(`/quizresult/email/${encodeURIComponent(email)}`, data),
+  submitAttempt: (payload) => apiClient.post("/quizresult/submit", payload),
+};
+
+// ============ ADVANCED APIs ============
+export const advancedAPI = {
+  getCommandPalette: () => apiClient.get("/advanced/command-palette"),
+
+  // Saved views
+  getSavedViews: (module) => apiClient.get("/advanced/saved-views", module ? { module } : {}),
+  createSavedView: (data) => apiClient.post("/advanced/saved-views", data),
+  updateSavedView: (id, data) => apiClient.put(`/advanced/saved-views/${id}`, data),
+  deleteSavedView: (id) => apiClient.delete(`/advanced/saved-views/${id}`),
+
+  // Search and candidate intelligence
+  searchCandidates: (params = {}) => apiClient.get("/advanced/candidate-search", params),
+  getCandidateJourney: (candidateId) => apiClient.get(`/advanced/candidate-journey/${candidateId}`),
+  getCandidate360: (candidateId) => apiClient.get(`/advanced/candidate-360/${candidateId}`),
+
+  // Scorecards and decisions
+  listScorecardTemplates: (params = {}) => apiClient.get("/advanced/scorecards/templates", params),
+  createScorecardTemplate: (data) => apiClient.post("/advanced/scorecards/templates", data),
+  evaluateScorecard: (data) => apiClient.post("/advanced/scorecards/evaluate", data),
+  listDecisions: (params = {}) => apiClient.get("/advanced/decisions", params),
+  upsertDecision: (data) => apiClient.post("/advanced/decisions", data),
+
+  // Analytics
+  getFunnelAnalytics: (params = {}) => apiClient.get("/advanced/analytics/funnel", params),
+  getSlaAnalytics: (params = {}) => apiClient.get("/advanced/analytics/sla", params),
+  getReasonAnalytics: (params = {}) => apiClient.get("/advanced/analytics/reasons", params),
+  getCalibrationAnalytics: (params = {}) => apiClient.get("/advanced/analytics/calibration", params),
+
+  // Queue jobs
+  enqueueNotification: (data) => apiClient.post("/advanced/jobs/notify", data),
+  getJobs: (params = {}) => apiClient.get("/advanced/jobs", params),
+
+  // AI helpers
+  getFitScore: (data) => apiClient.post("/advanced/ai/fit-score", data),
+  getInterviewSummary: (data) => apiClient.post("/advanced/ai/interview-summary", data),
 };

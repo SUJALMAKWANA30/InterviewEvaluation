@@ -22,7 +22,6 @@ export async function seedSuperAdmin() {
           { module: "drives", actions: ["view", "create", "edit", "delete"] },
           { module: "rounds", actions: ["view", "edit"] },
           { module: "reports", actions: ["view", "export"] },
-          { module: "scheduling", actions: ["view", "create", "edit", "delete", "assign"] },
           { module: "users", actions: ["view", "create", "edit", "delete"] },
           { module: "settings", actions: ["view", "edit"] },
         ],
@@ -47,7 +46,6 @@ export async function seedSuperAdmin() {
             { module: "drives", actions: ["view", "create", "edit", "delete"] },
             { module: "rounds", actions: ["view", "edit"] },
             { module: "reports", actions: ["view", "export"] },
-            { module: "scheduling", actions: ["view", "create", "edit", "assign"] },
             { module: "users", actions: ["view", "create", "edit"] },
             { module: "settings", actions: ["view", "edit"] },
           ],
@@ -63,7 +61,6 @@ export async function seedSuperAdmin() {
             { module: "drives", actions: ["view"] },
             { module: "rounds", actions: ["view", "edit"] },
             { module: "reports", actions: ["view", "export"] },
-            { module: "scheduling", actions: ["view", "create", "edit", "assign"] },
           ],
         },
         {
@@ -77,7 +74,6 @@ export async function seedSuperAdmin() {
             { module: "drives", actions: ["view"] },
             { module: "rounds", actions: ["view", "edit"] },
             { module: "reports", actions: ["view"] },
-            { module: "scheduling", actions: ["view"] },
           ],
         },
         {
@@ -113,13 +109,6 @@ export async function seedSuperAdmin() {
         password: defaultPassword,
         role: superAdminRole._id,
         isActive: true,
-        availability: [
-          { day: "Mon", startTime: "09:00", endTime: "18:00" },
-          { day: "Tue", startTime: "09:00", endTime: "18:00" },
-          { day: "Wed", startTime: "09:00", endTime: "18:00" },
-          { day: "Thu", startTime: "09:00", endTime: "18:00" },
-          { day: "Fri", startTime: "09:00", endTime: "18:00" },
-        ],
       });
 
       console.log(`✅ Super Admin user created: ${defaultEmail} / ${defaultPassword}`);

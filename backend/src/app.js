@@ -19,10 +19,11 @@ import driveRoutes from "./routes/driveRoutes.js";
 // New secure routes
 import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
-import scheduleRoutes from "./routes/scheduleRoutes.js";
+import advancedRoutes from "./routes/advancedRoutes.js";
 
 import { loadLocationTokens } from "./utils/locationTokens.js";
 import { seedSuperAdmin } from "./utils/seedSuperAdmin.js";
+import { startAsyncJobWorker } from "./services/asyncJobService.js";
 
 dotenv.config();
 
@@ -31,6 +32,7 @@ const app = express();
 connectDB().then(() => {
   // Seed super admin on first run
   seedSuperAdmin();
+  startAsyncJobWorker();
 });
 loadLocationTokens();
 
@@ -73,8 +75,8 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/exams", examRoutes);
 app.use("/api/drives", driveRoutes);
 
-// ============ SCHEDULE ROUTES (protected) ============
-app.use("/api/schedules", scheduleRoutes);
+// ============ ADVANCED FEATURE ROUTES ============
+app.use("/api/advanced", advancedRoutes);
 
 // ============ FALLBACKS & ERROR HANDLING ============
 app.use((req, res) => {

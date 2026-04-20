@@ -1,6 +1,6 @@
 /**
  * Notification Service
- * Email notifications for interview scheduling and status updates.
+ * Email notifications for candidate and user account workflows.
  * Uses nodemailer with Gmail SMTP.
  * Configure EMAIL_USER and EMAIL_APP_PASSWORD in .env
  * 
@@ -69,80 +69,6 @@ async function getTransporter() {
       return null;
     }
   }
-}
-
-/**
- * Send interview schedule notification to candidate
- */
-export async function sendInterviewSchedule(candidate, schedule, interviewer) {
-  const html = `
-    <div style="font-family: 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <div style="background: #4f46e5; color: white; padding: 20px; border-radius: 8px 8px 0 0;">
-        <h2 style="margin: 0;">Interview Scheduled</h2>
-        <p style="margin: 5px 0 0; opacity: 0.9;">Tecnoprism Walking Interview</p>
-      </div>
-      <div style="background: #ffffff; border: 1px solid #e5e7eb; border-top: 0; padding: 24px; border-radius: 0 0 8px 8px;">
-        <p>Dear <strong>${candidate.firstName} ${candidate.lastName}</strong>,</p>
-        <p>Your <strong>${schedule.round}</strong> interview has been scheduled:</p>
-        <div style="background: #f8fafc; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #4f46e5;">
-          <p style="margin: 4px 0;"><strong>Date:</strong> ${new Date(schedule.scheduledDate).toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
-          <p style="margin: 4px 0;"><strong>Time:</strong> ${schedule.startTime} - ${schedule.endTime}</p>
-          <p style="margin: 4px 0;"><strong>Interviewer:</strong> ${interviewer.name}</p>
-          ${schedule.meetingLink ? `<p style="margin: 4px 0;"><strong>Meeting Link:</strong> <a href="${schedule.meetingLink}">${schedule.meetingLink}</a></p>` : ""}
-          ${schedule.location ? `<p style="margin: 4px 0;"><strong>Location:</strong> ${schedule.location}</p>` : ""}
-        </div>
-        <p style="color: #6b7280; font-size: 14px;">Please be available 5 minutes before the scheduled time.</p>
-        <p style="margin-top: 24px;">Best regards,<br/><strong>Tecnoprism HR Team</strong></p>
-      </div>
-    </div>
-  `;
-
-  return sendEmail(
-    candidate.email,
-    `Interview Scheduled: ${schedule.round} - ${new Date(schedule.scheduledDate).toLocaleDateString()}`,
-    html
-  );
-}
-
-/**
- * Send interview schedule to interviewer
- */
-export async function sendInterviewerNotification(interviewer, schedules) {
-  const scheduleRows = schedules
-    .map(
-      (s) =>
-        `<tr>
-          <td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${s.startTime} - ${s.endTime}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${s.candidateName || "TBD"}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${s.round}</td>
-        </tr>`
-    )
-    .join("");
-
-  const html = `
-    <div style="font-family: 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <h2 style="color: #1f2937;">Your Interview Schedule</h2>
-      <p>Dear ${interviewer.name},</p>
-      <p>You have <strong>${schedules.length}</strong> interview(s) scheduled:</p>
-      <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
-        <thead>
-          <tr style="background: #f3f4f6;">
-            <th style="padding: 8px; text-align: left;">Time</th>
-            <th style="padding: 8px; text-align: left;">Candidate</th>
-            <th style="padding: 8px; text-align: left;">Round</th>
-          </tr>
-        </thead>
-        <tbody>${scheduleRows}</tbody>
-      </table>
-      <p style="margin-top: 24px;">Best regards,<br/><strong>Tecnoprism System</strong></p>
-    </div>
-  `;
-
-  return sendEmail(
-    interviewer.email,
-    `Interview Schedule Update - ${schedules.length} Interview(s)`,
-    html
-  );
 }
 
 /**

@@ -19,6 +19,36 @@ const roundReviewSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const scorecardEvaluationSchema = new mongoose.Schema(
+  {
+    round: {
+      type: String,
+      enum: ["R2", "R3", "R4"],
+      default: "R2",
+    },
+    templateId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ScorecardTemplate",
+      default: null,
+    },
+    templateName: { type: String, default: "" },
+    interviewer: { type: String, default: "" },
+    criteriaScores: [
+      {
+        key: { type: String, default: "" },
+        label: { type: String, default: "" },
+        score: { type: Number, default: 0 },
+        maxScore: { type: Number, default: 10 },
+        weight: { type: Number, default: 1 },
+      },
+    ],
+    normalizedScore: { type: Number, default: 0 },
+    notes: { type: String, default: "" },
+    evaluatedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const quizResultSchema = new mongoose.Schema(
   {
     email: { type: String, required: true, lowercase: true, trim: true },
@@ -36,6 +66,8 @@ const quizResultSchema = new mongoose.Schema(
     R2: { type: [roundReviewSchema], default: [] },
     R3: { type: [roundReviewSchema], default: [] },
     R4: { type: [roundReviewSchema], default: [] },
+    scorecards: { type: [scorecardEvaluationSchema], default: [] },
+    reasonTags: { type: [String], default: [] },
     examDate: { type: Date, default: Date.now },
     driveId: { type: mongoose.Schema.Types.ObjectId, ref: "Drive", default: null },
   },

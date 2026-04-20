@@ -13,6 +13,8 @@ import {
   LogOut,
   MapPin,
   ChevronDown,
+  Search,
+  Shield,
 } from "lucide-react";
 
 import { cn } from "../../utils/cn";
@@ -23,9 +25,13 @@ const navItems = [
   { label: "Dashboard", href: "/hr-home", icon: LayoutDashboard, permission: null }, // always visible
   { label: "Drives Info", href: "/hr/drives", icon: MapPin, permission: "drives" },
   { label: "Candidates", href: "/hr/candidate-dashboard", icon: Users, permission: "candidates" },
+  { label: "Candidate 360", href: "/hr/candidate-360", icon: Search, permission: "search" },
   { label: "Exams", href: "/hr/exam", icon: FileText, permission: "exams" },
+  { label: "Decisions", href: "/hr/decisions", icon: ClipboardList, permission: "decisions" },
+  { label: "Analytics", href: "/hr/analytics", icon: BarChart3, permission: "reports" },
   { label: "Reports", href: "/hr/reports", icon: BarChart3, permission: "reports" },
   { label: "Audit Logs", href: "/hr/audit-logs", icon: ClipboardList, permission: "audit_logs" },
+  { label: "Security", href: "/hr/security", icon: Shield, permission: null },
   { label: "Admin Settings", href: "/admin-settings", icon: Settings, permission: "settings" },
 ];
 

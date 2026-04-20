@@ -8,6 +8,10 @@ export default function HRLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [mfaCode, setMfaCode] = useState("");
+  const [backupCode, setBackupCode] = useState("");
+  const [useBackupCode, setUseBackupCode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
@@ -30,7 +34,12 @@ export default function HRLogin() {
     setError("");
 
     try {
-      const result = await authAPI.loginHR(email, password);
+      const result = await authAPI.loginHR(
+        email,
+        password,
+        useBackupCode ? "" : mfaCode,
+        useBackupCode ? backupCode : ""
+      );
 
       if (result.success) {
         // Store auth data securely
@@ -58,10 +67,17 @@ export default function HRLogin() {
         throw new Error(result.message || "Login failed");
       }
     } catch (err) {
-      const errorMessage =
-        err.message || "Network error. Please try again.";
-      setError(errorMessage);
-      toast.error(errorMessage);
+      if (err?.data?.mfaRequired) {
+        setMfaRequired(true);
+        setError("MFA required. Enter your 6-digit authenticator code or use a backup code.");
+        toast.error("MFA required.");
+      } else {
+        setMfaRequired(false);
+        const errorMessage =
+          err.message || "Network error. Please try again.";
+        setError(errorMessage);
+        toast.error(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -134,6 +150,48 @@ export default function HRLogin() {
               </button>
             </div>
           </div>
+
+          {/* MFA */}
+          {mfaRequired && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-medium text-gray-800">
+                  {useBackupCode ? "Backup Code" : "Authenticator Code"}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUseBackupCode((prev) => !prev);
+                    setMfaCode("");
+                    setBackupCode("");
+                  }}
+                  className="text-xs text-blue-600 hover:underline"
+                >
+                  {useBackupCode ? "Use authenticator code" : "Use backup code"}
+                </button>
+              </div>
+
+              {!useBackupCode ? (
+                <input
+                  type="text"
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="6-digit code"
+                  required={mfaRequired && !useBackupCode}
+                  className="w-full h-11 rounded-lg border border-gray-300 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+                />
+              ) : (
+                <input
+                  type="text"
+                  value={backupCode}
+                  onChange={(e) => setBackupCode(e.target.value.toUpperCase())}
+                  placeholder="Backup code"
+                  required={mfaRequired && useBackupCode}
+                  className="w-full h-11 rounded-lg border border-gray-300 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+                />
+              )}
+            </div>
+          )}
 
           {/* Button */}
           <button

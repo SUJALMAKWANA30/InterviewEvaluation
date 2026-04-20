@@ -7,8 +7,10 @@ import {
   deleteExam,
   toggleActiveExam,
   getActiveExam,
+  autosaveExamAttempt,
+  getMyActiveAttempt,
 } from "../controllers/examController.js";
-import { authenticate, authorizePermission } from "../middlewares/auth.js";
+import { authenticate, authorizePermission, requireCandidateUser } from "../middlewares/auth.js";
 import { requireCandidateLocationAccess } from "../middlewares/locationAccess.js";
 import { validateExam, validateObjectId } from "../middlewares/validators.js";
 
@@ -16,6 +18,21 @@ const router = express.Router();
 
 // Public route - get active exam (for user-side quiz)
 router.get("/active", authenticate, requireCandidateLocationAccess, getActiveExam);
+router.get(
+  "/attempts/active",
+  authenticate,
+  requireCandidateUser,
+  requireCandidateLocationAccess,
+  getMyActiveAttempt
+);
+router.post(
+  "/attempts/:id/autosave",
+  authenticate,
+  requireCandidateUser,
+  requireCandidateLocationAccess,
+  validateObjectId("id"),
+  autosaveExamAttempt
+);
 
 // Protected HR routes
 router.get("/", authenticate, getAllExams);

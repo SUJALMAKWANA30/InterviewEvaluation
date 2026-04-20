@@ -257,6 +257,24 @@ export const examAPI = {
     return handleResponse(response);
   },
 
+  getActiveAttempt: async (examId) => {
+    const query = examId ? `?examId=${encodeURIComponent(examId)}` : '';
+    const response = await fetch(`${API_BASE}/exams/attempts/active${query}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  autosaveAttempt: async (attemptId, answers, violationIncrement = 0) => {
+    const response = await fetch(`${API_BASE}/exams/attempts/${encodeURIComponent(attemptId)}/autosave`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ answers, violationIncrement }),
+    });
+    return handleResponse(response);
+  },
+
   /**
    * Start exam
    */
@@ -576,6 +594,14 @@ export const quizResultAPI = {
     });
     return handleResponse(response);
   },
+  submitAttempt: async ({ attemptId, answers }) => {
+    const response = await fetch(`${API_BASE}/quizresult/submit`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ attemptId, answers }),
+    });
+    return handleResponse(response);
+  },
 };
 
 // ==================== USER TIME DETAILS APIs ====================
@@ -622,6 +648,105 @@ export const userTimeDetailsAPI = {
 export const candidateMeAPI = {
   getMe: async () => {
     const response = await fetch(`${API_BASE}/candidate-details/me`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+};
+
+// ==================== ADVANCED FEATURE APIs ====================
+export const advancedAPI = {
+  getCommandPalette: async () => {
+    const response = await fetch(`${API_BASE}/advanced/command-palette`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  searchCandidates: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const response = await fetch(`${API_BASE}/advanced/candidate-search${query ? `?${query}` : ''}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  getCandidateJourney: async (candidateId) => {
+    const response = await fetch(`${API_BASE}/advanced/candidate-journey/${encodeURIComponent(candidateId)}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  getCandidate360: async (candidateId) => {
+    const response = await fetch(`${API_BASE}/advanced/candidate-360/${encodeURIComponent(candidateId)}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  listScorecardTemplates: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const response = await fetch(`${API_BASE}/advanced/scorecards/templates${query ? `?${query}` : ''}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  createScorecardTemplate: async (data) => {
+    const response = await fetch(`${API_BASE}/advanced/scorecards/templates`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+
+  evaluateScorecard: async (data) => {
+    const response = await fetch(`${API_BASE}/advanced/scorecards/evaluate`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+
+  getFunnelAnalytics: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const response = await fetch(`${API_BASE}/advanced/analytics/funnel${query ? `?${query}` : ''}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  getSlaAnalytics: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const response = await fetch(`${API_BASE}/advanced/analytics/sla${query ? `?${query}` : ''}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  getReasonAnalytics: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const response = await fetch(`${API_BASE}/advanced/analytics/reasons${query ? `?${query}` : ''}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  getCalibrationAnalytics: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const response = await fetch(`${API_BASE}/advanced/analytics/calibration${query ? `?${query}` : ''}`, {
       method: 'GET',
       headers: getAuthHeaders(),
     });

@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import User from "../models/User.js";
-import Role from "../models/Role.js";
+import Session from "../models/Session.js";
 import { createAuditLog } from "../middlewares/audit.js";
 
 const DEFAULT_DEV_JWT_SECRET = "dev-only-change-me";
@@ -12,6 +13,155 @@ if (!JWT_SECRET) {
 }
 const JWT_EXPIRES_IN = "8h";
 const REFRESH_TOKEN_EXPIRES_IN = "7d";
+const MFA_STEP_SECONDS = 30;
+const MFA_DIGITS = 6;
+
+const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+const hashValue = (value) =>
+  crypto.createHash("sha256").update(String(value || "")).digest("hex");
+
+const toBase32 = (buffer) => {
+  let bits = 0;
+  let value = 0;
+  let output = "";
+
+  for (const byte of buffer) {
+    value = (value << 8) | byte;
+    bits += 8;
+
+    while (bits >= 5) {
+      output += BASE32_ALPHABET[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+
+  if (bits > 0) {
+    output += BASE32_ALPHABET[(value << (5 - bits)) & 31];
+  }
+
+  return output;
+};
+
+const fromBase32 = (input = "") => {
+  const clean = String(input).toUpperCase().replace(/[^A-Z2-7]/g, "");
+  let bits = 0;
+  let value = 0;
+  const out = [];
+
+  for (const ch of clean) {
+    const idx = BASE32_ALPHABET.indexOf(ch);
+    if (idx < 0) continue;
+
+    value = (value << 5) | idx;
+    bits += 5;
+
+    if (bits >= 8) {
+      out.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+
+  return Buffer.from(out);
+};
+
+const counterToBuffer = (counter) => {
+  const buffer = Buffer.alloc(8);
+  let c = Number(counter);
+  for (let i = 7; i >= 0; i--) {
+    buffer[i] = c & 0xff;
+    c = Math.floor(c / 256);
+  }
+  return buffer;
+};
+
+const generateTotpCode = (secret, timestamp = Date.now()) => {
+  const key = fromBase32(secret);
+  const counter = Math.floor(timestamp / 1000 / MFA_STEP_SECONDS);
+  const digest = crypto
+    .createHmac("sha1", key)
+    .update(counterToBuffer(counter))
+    .digest();
+  const offset = digest[digest.length - 1] & 0xf;
+  const codeInt =
+    ((digest[offset] & 0x7f) << 24) |
+    ((digest[offset + 1] & 0xff) << 16) |
+    ((digest[offset + 2] & 0xff) << 8) |
+    (digest[offset + 3] & 0xff);
+
+  return String(codeInt % 10 ** MFA_DIGITS).padStart(MFA_DIGITS, "0");
+};
+
+const verifyTotpCode = (secret, code, skew = 1) => {
+  const normalized = String(code || "").replace(/\s+/g, "");
+  if (!/^\d{6}$/.test(normalized) || !secret) return false;
+
+  const now = Date.now();
+  for (let w = -skew; w <= skew; w++) {
+    if (generateTotpCode(secret, now + w * MFA_STEP_SECONDS * 1000) === normalized) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const generateBackupCodes = () =>
+  Array.from({ length: 8 }, () => crypto.randomBytes(4).toString("hex").toUpperCase());
+
+const decodeRefreshExpiry = (token) => {
+  const decoded = jwt.decode(token);
+  if (!decoded?.exp) {
+    return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  }
+  return new Date(decoded.exp * 1000);
+};
+
+const issueTokensForUser = async (user, req, familyId = crypto.randomUUID()) => {
+  const tokenPayload = {
+    id: user._id,
+    email: user.email,
+    type: "hr",
+    role: user.role?.slug,
+    level: user.role?.level,
+    mfaEnabled: !!user.mfaEnabled,
+  };
+
+  const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+  const refreshToken = jwt.sign(
+    { id: user._id, type: "refresh", fid: familyId },
+    JWT_SECRET,
+    { expiresIn: REFRESH_TOKEN_EXPIRES_IN }
+  );
+
+  const session = await Session.create({
+    userId: user._id,
+    refreshTokenHash: hashValue(refreshToken),
+    familyId,
+    userAgent: req.headers["user-agent"] || "",
+    ipAddress: req.ip || "",
+    deviceLabel: req.body?.deviceLabel || "",
+    expiresAt: decodeRefreshExpiry(refreshToken),
+    lastUsedAt: new Date(),
+  });
+
+  user.refreshToken = refreshToken;
+  await user.save();
+
+  return { token, refreshToken, session };
+};
+
+const consumeBackupCode = (user, backupCode) => {
+  const normalized = String(backupCode || "").trim().toUpperCase();
+  if (!normalized) return false;
+
+  const hash = hashValue(normalized);
+  const existing = Array.isArray(user.mfaBackupCodes) ? user.mfaBackupCodes : [];
+  const idx = existing.indexOf(hash);
+  if (idx === -1) return false;
+
+  user.mfaBackupCodes = existing.filter((_, i) => i !== idx);
+  return true;
+};
 
 /**
  * HR / Admin Login
@@ -27,7 +177,9 @@ export const loginHR = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() }).populate("role");
+    const user = await User.findOne({ email: email.toLowerCase() })
+      .select("+mfaSecret +mfaBackupCodes")
+      .populate("role");
 
     if (!user) {
       await createAuditLog({
@@ -65,24 +217,23 @@ export const loginHR = async (req, res) => {
       });
     }
 
-    const tokenPayload = {
-      id: user._id,
-      email: user.email,
-      type: "hr",
-      role: user.role?.slug,
-      level: user.role?.level,
-    };
+    if (user.mfaEnabled) {
+      const mfaCode = req.body?.mfaCode;
+      const backupCode = req.body?.backupCode;
+      const codeOk = verifyTotpCode(user.mfaSecret, mfaCode);
+      const backupOk = !codeOk && consumeBackupCode(user, backupCode);
 
-    const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
-    const refreshToken = jwt.sign(
-      { id: user._id, type: "refresh" },
-      JWT_SECRET,
-      { expiresIn: REFRESH_TOKEN_EXPIRES_IN }
-    );
+      if (!codeOk && !backupOk) {
+        return res.status(401).json({
+          success: false,
+          mfaRequired: true,
+          message: "MFA verification failed. Provide a valid MFA code or backup code.",
+        });
+      }
+    }
 
     user.lastLogin = new Date();
-    user.refreshToken = refreshToken;
-    await user.save();
+    const { token, refreshToken } = await issueTokensForUser(user, req);
 
     await createAuditLog({
       userId: user._id,
@@ -133,30 +284,52 @@ export const refreshToken = async (req, res) => {
     }
 
     const decoded = jwt.verify(token, JWT_SECRET);
-    const user = await User.findById(decoded.id).populate("role");
-
-    if (!user || !user.isActive || user.refreshToken !== token) {
+    if (decoded?.type !== "refresh") {
       return res.status(401).json({
         success: false,
         message: "Invalid refresh token.",
       });
     }
 
-    const newToken = jwt.sign(
-      {
-        id: user._id,
-        email: user.email,
-        type: "hr",
-        role: user.role?.slug,
-        level: user.role?.level,
-      },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
+    const tokenHash = hashValue(token);
+    const existingSession = await Session.findOne({ refreshTokenHash: tokenHash });
+
+    if (!existingSession || existingSession.isRevoked || existingSession.expiresAt <= new Date()) {
+      if (existingSession?.familyId && existingSession?.userId) {
+        await Session.updateMany(
+          { userId: existingSession.userId, familyId: existingSession.familyId, isRevoked: false },
+          { $set: { isRevoked: true, revokedAt: new Date() } }
+        );
+      }
+      return res.status(401).json({
+        success: false,
+        message: "Invalid refresh token.",
+      });
+    }
+
+    const user = await User.findById(decoded.id).populate("role");
+    if (!user || !user.isActive) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid refresh token.",
+      });
+    }
+
+    existingSession.isRevoked = true;
+    existingSession.revokedAt = new Date();
+    await existingSession.save();
+
+    const familyId = existingSession.familyId || decoded.fid || crypto.randomUUID();
+    const { token: newToken, refreshToken: newRefreshToken } = await issueTokensForUser(
+      user,
+      req,
+      familyId
     );
 
     res.status(200).json({
       success: true,
       token: newToken,
+      refreshToken: newRefreshToken,
     });
   } catch (error) {
     res.status(401).json({
@@ -195,6 +368,7 @@ export const getHRProfile = async (req, res) => {
         drives: user.drives || [],
         lastLogin: user.lastLogin,
         isActive: user.isActive,
+        mfaEnabled: !!user.mfaEnabled,
       },
     });
   } catch (error) {
@@ -211,6 +385,19 @@ export const getHRProfile = async (req, res) => {
  */
 export const logoutHR = async (req, res) => {
   try {
+    const providedToken = req.body?.refreshToken;
+    if (providedToken) {
+      await Session.updateOne(
+        { userId: req.user.id, refreshTokenHash: hashValue(providedToken) },
+        { $set: { isRevoked: true, revokedAt: new Date() } }
+      );
+    } else {
+      await Session.updateMany(
+        { userId: req.user.id, isRevoked: false },
+        { $set: { isRevoked: true, revokedAt: new Date() } }
+      );
+    }
+
     await User.findByIdAndUpdate(req.user.id, { refreshToken: null });
 
     await createAuditLog({
@@ -230,6 +417,237 @@ export const logoutHR = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Logout failed.",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get active user sessions
+ */
+export const getMySessions = async (req, res) => {
+  try {
+    const sessions = await Session.find({
+      userId: req.user.id,
+      expiresAt: { $gt: new Date() },
+    })
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      data: sessions.map((s) => ({
+        id: s._id,
+        userAgent: s.userAgent,
+        ipAddress: s.ipAddress,
+        deviceLabel: s.deviceLabel,
+        isRevoked: s.isRevoked,
+        createdAt: s.createdAt,
+        lastUsedAt: s.lastUsedAt,
+        expiresAt: s.expiresAt,
+      })),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch sessions.",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Revoke one session
+ */
+export const revokeSession = async (req, res) => {
+  try {
+    const session = await Session.findOne({ _id: req.params.id, userId: req.user.id });
+    if (!session) {
+      return res.status(404).json({ success: false, message: "Session not found." });
+    }
+
+    session.isRevoked = true;
+    session.revokedAt = new Date();
+    await session.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Session revoked successfully.",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to revoke session.",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Setup MFA secret and backup codes
+ */
+export const setupMFA = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("+mfaSecret +mfaBackupCodes");
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    const secret = toBase32(crypto.randomBytes(20));
+    const backupCodes = generateBackupCodes();
+
+    user.mfaSecret = secret;
+    user.mfaEnabled = false;
+    user.mfaBackupCodes = backupCodes.map((c) => hashValue(c));
+    user.mfaConfiguredAt = new Date();
+    await user.save();
+
+    const issuer = encodeURIComponent("InterviewEvaluation");
+    const label = encodeURIComponent(`${user.email}`);
+    const otpauthUri = `otpauth://totp/${issuer}:${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=${MFA_DIGITS}&period=${MFA_STEP_SECONDS}`;
+
+    return res.status(200).json({
+      success: true,
+      message: "MFA setup generated. Verify one code to enable.",
+      data: {
+        secret,
+        otpauthUri,
+        backupCodes,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to setup MFA.",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Enable MFA after code verification
+ */
+export const enableMFA = async (req, res) => {
+  try {
+    const code = req.body?.code;
+    const user = await User.findById(req.user.id).select("+mfaSecret +mfaBackupCodes");
+
+    if (!user || !user.mfaSecret) {
+      return res.status(400).json({
+        success: false,
+        message: "MFA is not configured for this account.",
+      });
+    }
+
+    const ok = verifyTotpCode(user.mfaSecret, code);
+    if (!ok) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid MFA code.",
+      });
+    }
+
+    user.mfaEnabled = true;
+    user.mfaConfiguredAt = new Date();
+    await user.save();
+
+    await createAuditLog({
+      userId: user._id,
+      userName: user.name,
+      action: "auth.mfa_enabled",
+      description: `${user.name} enabled MFA`,
+      ip: req.ip,
+      userAgent: req.headers["user-agent"],
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "MFA enabled successfully.",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to enable MFA.",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Disable MFA
+ */
+export const disableMFA = async (req, res) => {
+  try {
+    const code = req.body?.code;
+    const backupCode = req.body?.backupCode;
+    const user = await User.findById(req.user.id).select("+mfaSecret +mfaBackupCodes");
+
+    if (!user || !user.mfaEnabled) {
+      return res.status(400).json({
+        success: false,
+        message: "MFA is not enabled.",
+      });
+    }
+
+    const codeOk = verifyTotpCode(user.mfaSecret, code);
+    const backupOk = !codeOk && consumeBackupCode(user, backupCode);
+    if (!codeOk && !backupOk) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid MFA code.",
+      });
+    }
+
+    user.mfaEnabled = false;
+    user.mfaSecret = null;
+    user.mfaBackupCodes = [];
+    await user.save();
+
+    await createAuditLog({
+      userId: user._id,
+      userName: user.name,
+      action: "auth.mfa_disabled",
+      description: `${user.name} disabled MFA`,
+      ip: req.ip,
+      userAgent: req.headers["user-agent"],
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "MFA disabled successfully.",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to disable MFA.",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * MFA status
+ */
+export const getMFAStatus = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("+mfaBackupCodes");
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        mfaEnabled: !!user.mfaEnabled,
+        backupCodesRemaining: Array.isArray(user.mfaBackupCodes) ? user.mfaBackupCodes.length : 0,
+        configuredAt: user.mfaConfiguredAt || null,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch MFA status.",
       error: error.message,
     });
   }

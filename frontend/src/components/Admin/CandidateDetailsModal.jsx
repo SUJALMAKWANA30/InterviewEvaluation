@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Edit2, Save, Loader2, MessageSquare, FileText, Image, CreditCard, Receipt, ExternalLink, Check, Lock } from 'lucide-react';
+import { X, Edit2, Save, Loader2, MessageSquare, FileText, Image, CreditCard, Receipt, ExternalLink, Check, Lock, Plus, RefreshCw } from 'lucide-react';
 import { CandidatePhoto, getGoogleDriveImageUrl } from './CandidatePhoto';
 import { usePermissions } from '../../hooks/usePermissions';
-import { quizResultAPI } from '../../utils/api';
+import { quizResultAPI, advancedAPI } from '../../utils/api';
 
 // SECTION_CONFIG removed — R1 sections are now dynamic from sectionWiseMarks
 
@@ -67,6 +67,174 @@ export function CandidateDetailsModal({ candidate, open, onClose, userRole = 'Ad
   
   // Store the email from quiz database (may be different from candidate.email)
   const [quizEmail, setQuizEmail] = useState('');
+
+  // Embedded personal R2 scorecard state
+  const [showR2Scorecard, setShowR2Scorecard] = useState(false);
+  const [showR2TemplateBuilder, setShowR2TemplateBuilder] = useState(false);
+  const [r2ScorecardLoading, setR2ScorecardLoading] = useState(false);
+  const [r2ScorecardSaving, setR2ScorecardSaving] = useState(false);
+  const [r2ScorecardTemplates, setR2ScorecardTemplates] = useState([]);
+  const [selectedR2TemplateId, setSelectedR2TemplateId] = useState('');
+  const [r2ScoreInputs, setR2ScoreInputs] = useState({});
+  const [lastSavedR2ScoreSignature, setLastSavedR2ScoreSignature] = useState('');
+  const [newR2Template, setNewR2Template] = useState({
+    name: '',
+    criteria: [{ key: '', label: '', weight: 1, maxScore: 10 }],
+  });
+
+  const selectedR2Template =
+    r2ScorecardTemplates.find((template) => String(template._id) === String(selectedR2TemplateId)) || null;
+
+  const fetchR2Scorecards = async () => {
+    if (!canEditR2) return;
+
+    setR2ScorecardLoading(true);
+    try {
+      const params = {
+        round: 'R2',
+        activeOnly: true,
+        mineOnly: true,
+      };
+
+      if (candidate?.driveId) {
+        params.driveId = candidate.driveId;
+      }
+
+      const response = await advancedAPI.listScorecardTemplates(params);
+      const templates = Array.isArray(response?.data) ? response.data : [];
+      setR2ScorecardTemplates(templates);
+
+      if (!selectedR2TemplateId && templates.length > 0) {
+        setSelectedR2TemplateId(templates[0]._id);
+      }
+      if (selectedR2TemplateId) {
+        const exists = templates.some((template) => String(template._id) === String(selectedR2TemplateId));
+        if (!exists) {
+          setSelectedR2TemplateId(templates[0]?._id || '');
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching personal R2 scorecards:', error);
+      setR2ScorecardTemplates([]);
+    } finally {
+      setR2ScorecardLoading(false);
+    }
+  };
+
+  const addR2Criterion = () => {
+    setNewR2Template((prev) => ({
+      ...prev,
+      criteria: [...prev.criteria, { key: '', label: '', weight: 1, maxScore: 10 }],
+    }));
+  };
+
+  const updateR2Criterion = (index, field, value) => {
+    setNewR2Template((prev) => {
+      const criteria = [...prev.criteria];
+      criteria[index] = { ...criteria[index], [field]: value };
+      return { ...prev, criteria };
+    });
+  };
+
+  const removeR2Criterion = (index) => {
+    setNewR2Template((prev) => {
+      if (prev.criteria.length <= 1) return prev;
+      return {
+        ...prev,
+        criteria: prev.criteria.filter((_, idx) => idx !== index),
+      };
+    });
+  };
+
+  const createPersonalR2Template = async () => {
+    const name = String(newR2Template.name || '').trim();
+    const criteria = (newR2Template.criteria || [])
+      .map((item) => ({
+        key: String(item.key || '').trim(),
+        label: String(item.label || '').trim(),
+        weight: Number(item.weight || 0),
+        maxScore: Number(item.maxScore || 0),
+      }))
+      .filter((item) => item.key && item.label && item.weight > 0 && item.maxScore > 0);
+
+    if (!name) {
+      alert('Template name is required.');
+      return;
+    }
+    if (criteria.length === 0) {
+      alert('Add at least one valid criterion.');
+      return;
+    }
+
+    setR2ScorecardSaving(true);
+    try {
+      await advancedAPI.createScorecardTemplate({
+        name,
+        roleName: 'R2 Personal',
+        round: 'R2',
+        driveId: candidate?.driveId || null,
+        criteria,
+      });
+
+      setNewR2Template({
+        name: '',
+        criteria: [{ key: '', label: '', weight: 1, maxScore: 10 }],
+      });
+      setShowR2TemplateBuilder(false);
+      await fetchR2Scorecards();
+    } catch (error) {
+      console.error('Error creating personal R2 scorecard template:', error);
+      alert(error?.message || 'Failed to create template.');
+    } finally {
+      setR2ScorecardSaving(false);
+    }
+  };
+
+  const buildR2ScorecardDraft = () => {
+    if (!selectedR2Template) return null;
+
+    const criteria = Array.isArray(selectedR2Template.criteria) ? selectedR2Template.criteria : [];
+    const scores = {};
+    let hasAnyInput = false;
+
+    for (const criterion of criteria) {
+      const raw = r2ScoreInputs[criterion.key];
+      if (raw !== '' && raw !== undefined && raw !== null) {
+        hasAnyInput = true;
+      }
+      scores[criterion.key] = Number(raw || 0);
+    }
+
+    return {
+      scores,
+      hasAnyInput,
+      signature: JSON.stringify({
+        templateId: String(selectedR2Template._id || ''),
+        scores,
+      }),
+    };
+  };
+
+  const getR2ProjectedScore = () => {
+    if (!selectedR2Template) return 0;
+
+    const criteria = Array.isArray(selectedR2Template.criteria) ? selectedR2Template.criteria : [];
+    let weighted = 0;
+    let totalWeight = 0;
+
+    for (const criterion of criteria) {
+      const raw = r2ScoreInputs[criterion.key];
+      const numeric = raw === '' || raw === undefined || raw === null ? 0 : Number(raw);
+      const maxScore = Number(criterion.maxScore || 10) || 10;
+      const weight = Number(criterion.weight || 0);
+      const safeScore = Math.min(Math.max(numeric, 0), maxScore);
+
+      weighted += (safeScore / maxScore) * weight;
+      totalWeight += weight;
+    }
+
+    return totalWeight > 0 ? Number(((weighted / totalWeight) * 100).toFixed(2)) : 0;
+  };
 
   const getRoundPayload = (roundKey, nextStatus) => ({
     R2: [{
@@ -228,9 +396,20 @@ export function CandidateDetailsModal({ candidate, open, onClose, userRole = 'Ad
       setR4Status('');
       setComments({ r2: '', r3: '', r4: '' });
       setRoundSaveStatus({ r2: false, r3: false, r4: false });
+      setShowR2Scorecard(false);
+      setShowR2TemplateBuilder(false);
+      setR2ScorecardTemplates([]);
+      setSelectedR2TemplateId('');
+      setR2ScoreInputs({});
+      setLastSavedR2ScoreSignature('');
+      setNewR2Template({
+        name: '',
+        criteria: [{ key: '', label: '', weight: 1, maxScore: 10 }],
+      });
       
       // Fetch interviewer names from API
       fetchInterviewerNames();
+      fetchR2Scorecards();
       
       // Fetch fresh data from API with name, phone, and email
       fetchCandidateData(candidate.email, candidate.name, candidate.phone);
@@ -262,6 +441,19 @@ export function CandidateDetailsModal({ candidate, open, onClose, userRole = 'Ad
     }
     setSaved(false);
   }, [candidate, open]);
+
+  useEffect(() => {
+    if (!selectedR2Template) {
+      setR2ScoreInputs({});
+      return;
+    }
+
+    const initial = {};
+    (selectedR2Template.criteria || []).forEach((criterion) => {
+      initial[criterion.key] = '';
+    });
+    setR2ScoreInputs(initial);
+  }, [selectedR2TemplateId, r2ScorecardTemplates]);
 
   if (!open || !candidate) return null;
 
@@ -344,8 +536,42 @@ export function CandidateDetailsModal({ candidate, open, onClose, userRole = 'Ad
     try {
       // Use quizEmail if available, otherwise fall back to candidate.email
       const emailForUpdate = quizEmail || candidate.email;
-      
-      const response = await quizResultAPI.updateQuizResultByEmail(emailForUpdate, getRoundPayload(roundKey, newStatus));
+      let nextR2Comments = comments.r2 || '';
+
+      // Save scorecard together with Save R2 (no separate apply button).
+      if (roundKey === 'r2' && selectedR2Template) {
+        const scorecardDraft = buildR2ScorecardDraft();
+        if (scorecardDraft?.hasAnyInput && scorecardDraft.signature !== lastSavedR2ScoreSignature) {
+          setR2ScorecardSaving(true);
+          const scorecardResponse = await advancedAPI.evaluateScorecard({
+            templateId: selectedR2Template._id,
+            candidateEmail: emailForUpdate,
+            interviewer: r2Interviewer || loggedInUserName || '',
+            notes: '',
+            round: 'R2',
+            scores: scorecardDraft.scores,
+          });
+
+          if (!scorecardResponse?.success) {
+            throw new Error('Failed to save R2 scorecard.');
+          }
+
+          const scoreSummary = String(scorecardResponse?.data?.roundComment || '').trim();
+          if (scoreSummary) {
+            nextR2Comments = nextR2Comments ? `${nextR2Comments}\n${scoreSummary}` : scoreSummary;
+            setComments((prev) => ({ ...prev, r2: nextR2Comments }));
+          }
+
+          setLastSavedR2ScoreSignature(scorecardDraft.signature);
+        }
+      }
+
+      const payload = getRoundPayload(roundKey, newStatus);
+      if (roundKey === 'r2') {
+        payload.R2 = [{ ...payload.R2[0], comments: nextR2Comments }];
+      }
+
+      const response = await quizResultAPI.updateQuizResultByEmail(emailForUpdate, payload);
 
       if (!response?.success) throw new Error('Failed to save round data');
 
@@ -362,6 +588,7 @@ export function CandidateDetailsModal({ candidate, open, onClose, userRole = 'Ad
       console.error('Error saving round data:', error);
       alert('Failed to save round data. Please try again.');
     } finally {
+      setR2ScorecardSaving(false);
       setRoundSaveLoading(prev => ({ ...prev, [roundKey]: false }));
     }
   };
@@ -383,6 +610,12 @@ export function CandidateDetailsModal({ candidate, open, onClose, userRole = 'Ad
 
   const displayTotal = dynamicTotalScore > 0 ? dynamicTotalScore : apiFinalScore;
   const displayMaxScore = dynamicMaxScore > 0 ? dynamicMaxScore : 30;
+  const r2ScorecardDraft = buildR2ScorecardDraft();
+  const r2ScorecardDirty = Boolean(
+    r2ScorecardDraft?.hasAnyInput &&
+    r2ScorecardDraft.signature !== lastSavedR2ScoreSignature
+  );
+  const r2ProjectedScore = getR2ProjectedScore();
 
   const getDownloadUrl = (url) => {
     if (!url) return '#';
@@ -721,82 +954,113 @@ export function CandidateDetailsModal({ candidate, open, onClose, userRole = 'Ad
                     {!canEditR2 && <span style={{ marginLeft: '8px', fontSize: '11px', fontWeight: '600', color: '#6b7280', background: '#f3f4f6', padding: '2px 8px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}><Lock size={10} /> Read Only</span>}
                   </h5>
                 </div>
-                <div style={{ position: 'relative' }} title={canEditR2 ? "Selecting an interviewer will automatically set status to 'In Progress' and save to database" : "You don't have permission to edit R2"}>
-                  <select
-                    value={r2Interviewer}
-                    onChange={(e) => {
-                      const newInterviewer = e.target.value;
-                      setR2Interviewer(newInterviewer);
-                      // Clear error when interviewer is selected
-                      if (newInterviewer) {
-                        setInterviewerError(prev => ({ ...prev, r2: false }));
-                      }
-                      let newStatus = r2RoundStatus;
-                      if (newInterviewer && r2RoundStatus !== 'completed' && r2RoundStatus !== 'drop') {
-                        newStatus = 'in progress';
-                        setR2RoundStatus('in progress');
-                      }
-                      // Auto-save to database
-                      if (newInterviewer) {
-                        autoSaveInterviewer('r2', newInterviewer, newStatus);
-                      }
-                    }}
-                    disabled={!canEditR2 || interviewerSaving.r2}
-                    style={{
-                      padding: '8px 16px',
-                      border: interviewerError.r2 ? '2px solid #dc2626' : '1px solid #e5e7eb',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      fontWeight: '600',
-                      cursor: interviewerSaving.r2 ? 'wait' : 'pointer',
-                      outline: 'none',
-                      background: interviewerError.r2 ? '#fef2f2' : (r2Interviewer ? '#dbeafe' : 'white'),
-                      color: r2Interviewer ? '#1e40af' : '#374151',
-                      minWidth: '160px',
-                      opacity: interviewerSaving.r2 ? 0.7 : 1,
-                    }}
-                  >
-                    <option value="">Select Interviewer</option>
-                    {(loggedInUserName && !interviewerNames.includes(loggedInUserName)
-                      ? [loggedInUserName, ...interviewerNames]
-                      : interviewerNames
-                    ).map((name) => (
-                      <option key={name} value={name}>{name}</option>
-                    ))}
-                  </select>
-                  {interviewerError.r2 && (
-                    <span style={{ 
-                      display: 'block', 
-                      fontSize: '11px', 
-                      color: '#dc2626', 
-                      marginTop: '4px',
-                      fontWeight: '600' 
-                    }}>
-                      ⚠️ Please choose interviewer name
-                    </span>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                  {canEditR2 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !showR2Scorecard;
+                        setShowR2Scorecard(next);
+                        if (next) {
+                          fetchR2Scorecards();
+                        }
+                      }}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '8px 12px',
+                        border: '1px solid #6366f1',
+                        borderRadius: '8px',
+                        background: showR2Scorecard ? '#eef2ff' : 'white',
+                        color: '#4338ca',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <FileText size={14} />
+                      {showR2Scorecard ? 'Hide Scorecard' : 'R2 Scorecard'}
+                    </button>
                   )}
-                  {interviewerSaving.r2 && (
-                    <span style={{ 
-                      display: 'block', 
-                      fontSize: '10px', 
-                      color: '#f59e0b', 
-                      marginTop: '4px',
-                      fontWeight: '600' 
-                    }}>
-                      ⏳ Saving...
-                    </span>
-                  )}
-                  {interviewerSaved.r2 && (
-                    <span style={{ 
-                      display: 'block', 
-                      fontSize: '10px', 
-                      color: '#10b981', 
-                      marginTop: '4px',
-                      fontWeight: '600' 
-                    }}>
-                      ✓ Saved to database
-                    </span>
-                  )}
+
+                  <div style={{ position: 'relative' }} title={canEditR2 ? "Selecting an interviewer will automatically set status to 'In Progress' and save to database" : "You don't have permission to edit R2"}>
+                    <select
+                      value={r2Interviewer}
+                      onChange={(e) => {
+                        const newInterviewer = e.target.value;
+                        setR2Interviewer(newInterviewer);
+                        // Clear error when interviewer is selected
+                        if (newInterviewer) {
+                          setInterviewerError(prev => ({ ...prev, r2: false }));
+                        }
+                        let newStatus = r2RoundStatus;
+                        if (newInterviewer && r2RoundStatus !== 'completed' && r2RoundStatus !== 'drop') {
+                          newStatus = 'in progress';
+                          setR2RoundStatus('in progress');
+                        }
+                        // Auto-save to database
+                        if (newInterviewer) {
+                          autoSaveInterviewer('r2', newInterviewer, newStatus);
+                        }
+                      }}
+                      disabled={!canEditR2 || interviewerSaving.r2}
+                      style={{
+                        padding: '8px 16px',
+                        border: interviewerError.r2 ? '2px solid #dc2626' : '1px solid #e5e7eb',
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        fontWeight: '600',
+                        cursor: interviewerSaving.r2 ? 'wait' : 'pointer',
+                        outline: 'none',
+                        background: interviewerError.r2 ? '#fef2f2' : (r2Interviewer ? '#dbeafe' : 'white'),
+                        color: r2Interviewer ? '#1e40af' : '#374151',
+                        minWidth: '160px',
+                        opacity: interviewerSaving.r2 ? 0.7 : 1,
+                      }}
+                    >
+                      <option value="">Select Interviewer</option>
+                      {(loggedInUserName && !interviewerNames.includes(loggedInUserName)
+                        ? [loggedInUserName, ...interviewerNames]
+                        : interviewerNames
+                      ).map((name) => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                    </select>
+                    {interviewerError.r2 && (
+                      <span style={{ 
+                        display: 'block', 
+                        fontSize: '11px', 
+                        color: '#dc2626', 
+                        marginTop: '4px',
+                        fontWeight: '600' 
+                      }}>
+                        ⚠️ Please choose interviewer name
+                      </span>
+                    )}
+                    {interviewerSaving.r2 && (
+                      <span style={{ 
+                        display: 'block', 
+                        fontSize: '10px', 
+                        color: '#f59e0b', 
+                        marginTop: '4px',
+                        fontWeight: '600' 
+                      }}>
+                        ⏳ Saving...
+                      </span>
+                    )}
+                    {interviewerSaved.r2 && (
+                      <span style={{ 
+                        display: 'block', 
+                        fontSize: '10px', 
+                        color: '#10b981', 
+                        marginTop: '4px',
+                        fontWeight: '600' 
+                      }}>
+                        ✓ Saved to database
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               
@@ -847,6 +1111,206 @@ export function CandidateDetailsModal({ candidate, open, onClose, userRole = 'Ad
                   ))}
                 </div>
               </div>
+
+              {canEditR2 && showR2Scorecard && (
+                <div style={{ marginBottom: '16px', background: 'linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%)', borderRadius: '14px', padding: '16px', border: '1px solid #c7d2fe', boxShadow: '0 8px 22px rgba(79,70,229,0.08)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: '#3730a3' }}>Personal R2 Reusable Scorecard</p>
+                    <button
+                      type="button"
+                      onClick={fetchR2Scorecards}
+                      disabled={r2ScorecardLoading}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        border: '1px solid #a5b4fc',
+                        borderRadius: '6px',
+                        background: 'white',
+                        color: '#4338ca',
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        padding: '6px 10px',
+                        cursor: r2ScorecardLoading ? 'not-allowed' : 'pointer',
+                        opacity: r2ScorecardLoading ? 0.7 : 1,
+                      }}
+                    >
+                      {r2ScorecardLoading ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={12} />}
+                      Refresh
+                    </button>
+                  </div>
+                  <p style={{ margin: '0 0 12px 0', fontSize: '11px', fontWeight: '600', color: '#4338ca' }}>
+                    Scorecard values are saved when you click <b>Save R2</b>.
+                  </p>
+
+                  <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: '1fr auto' }}>
+                    <select
+                      value={selectedR2TemplateId}
+                      onChange={(e) => setSelectedR2TemplateId(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        border: '1px solid #c7d2fe',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        color: '#1f2937',
+                        background: 'white',
+                      }}
+                    >
+                      <option value="">Select your R2 template</option>
+                      {r2ScorecardTemplates.map((template) => (
+                        <option key={template._id} value={template._id}>
+                          {template.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowR2TemplateBuilder((prev) => !prev)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        border: '1px solid #6366f1',
+                        borderRadius: '8px',
+                        background: showR2TemplateBuilder ? '#6366f1' : 'white',
+                        color: showR2TemplateBuilder ? 'white' : '#4f46e5',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        padding: '8px 10px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Plus size={12} /> {showR2TemplateBuilder ? 'Close Builder' : 'New Template'}
+                    </button>
+                  </div>
+
+                  {showR2TemplateBuilder && (
+                    <div style={{ marginTop: '10px', background: 'white', borderRadius: '10px', border: '1px solid #c7d2fe', padding: '12px' }}>
+                      <input
+                        value={newR2Template.name}
+                        onChange={(e) => setNewR2Template((prev) => ({ ...prev, name: e.target.value }))}
+                        placeholder="Template name"
+                        style={{
+                          width: '100%',
+                          marginBottom: '8px',
+                          padding: '8px 10px',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                        }}
+                      />
+
+                      {(newR2Template.criteria || []).map((criterion, index) => (
+                        <div key={`new-r2-criterion-${index}`} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 90px 90px 34px', gap: '6px', marginBottom: '6px' }}>
+                          <input
+                            value={criterion.key}
+                            onChange={(e) => updateR2Criterion(index, 'key', e.target.value)}
+                            placeholder="key"
+                            style={{ padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '11px' }}
+                          />
+                          <input
+                            value={criterion.label}
+                            onChange={(e) => updateR2Criterion(index, 'label', e.target.value)}
+                            placeholder="label"
+                            style={{ padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '11px' }}
+                          />
+                          <input
+                            type="number"
+                            min={1}
+                            value={criterion.weight}
+                            onChange={(e) => updateR2Criterion(index, 'weight', e.target.value)}
+                            placeholder="weight"
+                            style={{ padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '11px' }}
+                          />
+                          <input
+                            type="number"
+                            min={1}
+                            value={criterion.maxScore}
+                            onChange={(e) => updateR2Criterion(index, 'maxScore', e.target.value)}
+                            placeholder="max"
+                            style={{ padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '11px' }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeR2Criterion(index)}
+                            style={{ border: '1px solid #e5e7eb', borderRadius: '6px', background: 'white', color: '#ef4444', fontWeight: '700', cursor: 'pointer' }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                        <button
+                          type="button"
+                          onClick={addR2Criterion}
+                          style={{ border: '1px solid #c7d2fe', borderRadius: '6px', background: '#eef2ff', color: '#4338ca', fontSize: '11px', fontWeight: '700', padding: '6px 10px', cursor: 'pointer' }}
+                        >
+                          Add Criterion
+                        </button>
+                        <button
+                          type="button"
+                          onClick={createPersonalR2Template}
+                          disabled={r2ScorecardSaving}
+                          style={{ border: '1px solid #4f46e5', borderRadius: '6px', background: '#4f46e5', color: 'white', fontSize: '11px', fontWeight: '700', padding: '6px 10px', cursor: r2ScorecardSaving ? 'not-allowed' : 'pointer', opacity: r2ScorecardSaving ? 0.7 : 1 }}
+                        >
+                          {r2ScorecardSaving ? 'Saving...' : 'Save Personal Template'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedR2Template && (
+                    <div style={{ marginTop: '12px', background: 'linear-gradient(135deg, #ffffff 0%, #f8faff 100%)', borderRadius: '12px', border: '1px solid #c7d2fe', padding: '14px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                        <p style={{ margin: 0, fontSize: '12px', fontWeight: '700', color: '#312e81' }}>
+                          Evaluate with: {selectedR2Template.name}
+                        </p>
+                        <span style={{ fontSize: '11px', fontWeight: '700', color: '#0f766e', background: '#ecfeff', border: '1px solid #99f6e4', borderRadius: '999px', padding: '4px 10px' }}>
+                          Projected: {r2ProjectedScore}%
+                        </span>
+                      </div>
+
+                      {(selectedR2Template.criteria || []).map((criterion) => (
+                        <div key={`score-input-${criterion.key}`} style={{ display: 'grid', gridTemplateColumns: '1fr 90px', gap: '10px', alignItems: 'center', marginBottom: '8px', padding: '8px', borderRadius: '8px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                          <div>
+                            <label style={{ fontSize: '12px', color: '#1f2937', fontWeight: '600' }}>
+                              {criterion.label}
+                            </label>
+                            <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                              max {criterion.maxScore} · weight {criterion.weight}
+                            </div>
+                          </div>
+                          <input
+                            type="number"
+                            min={0}
+                            max={criterion.maxScore}
+                            value={r2ScoreInputs[criterion.key] ?? ''}
+                            onChange={(e) =>
+                              setR2ScoreInputs((prev) => ({
+                                ...prev,
+                                [criterion.key]: e.target.value,
+                              }))
+                            }
+                            style={{ padding: '7px 8px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '12px', fontWeight: '600', textAlign: 'center', background: 'white' }}
+                          />
+                        </div>
+                      ))}
+
+                      <div style={{ marginTop: '10px', padding: '10px 12px', borderRadius: '8px', background: r2ScorecardDirty ? '#ecfeff' : '#f8fafc', border: r2ScorecardDirty ? '1px solid #99f6e4' : '1px solid #e2e8f0' }}>
+                        <span style={{ fontSize: '11px', color: r2ScorecardDirty ? '#0f766e' : '#475569', fontWeight: '700' }}>
+                          {r2ScorecardDirty
+                            ? 'Pending scorecard changes. Click Save R2 to persist scorecard + comments together.'
+                            : 'Scorecard is synced. Update values anytime and click Save R2.'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               
               <textarea
                 placeholder={canEditR2 ? "Enter technical round feedback and notes..." : "No edit permission for this round"}
@@ -937,7 +1401,7 @@ export function CandidateDetailsModal({ candidate, open, onClose, userRole = 'Ad
                   ) : (
                     <Save size={16} />
                   )}
-                  {roundSaveStatus.r2 ? '✓ Saved' : 'Save R2'}
+                  {roundSaveStatus.r2 ? '✓ Saved' : (r2ScorecardDirty ? 'Save R2 + Scorecard' : 'Save R2')}
                 </button>
               </div>
               )}

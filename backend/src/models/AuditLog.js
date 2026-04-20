@@ -28,11 +28,6 @@ const auditLogSchema = new mongoose.Schema(
         "round.update",
         "round.drop",
         "round.complete",
-        // Scheduling
-        "schedule.create",
-        "schedule.update",
-        "schedule.cancel",
-        "schedule.auto_assign",
         // Exams
         "exam.create",
         "exam.update",
@@ -60,7 +55,7 @@ const auditLogSchema = new mongoose.Schema(
     targetType: {
       type: String,
       default: null,
-      // e.g., 'CandidateDetails', 'Exam', 'Drive', 'Schedule', 'User', 'Role'
+      // e.g., 'CandidateDetails', 'Exam', 'Drive', 'User', 'Role'
     },
     targetId: {
       type: mongoose.Schema.Types.ObjectId,
