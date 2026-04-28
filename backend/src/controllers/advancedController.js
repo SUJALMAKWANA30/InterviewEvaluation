@@ -65,12 +65,10 @@ export const getCommandPaletteItems = async (req, res) => {
       { id: "go-candidates", label: "Open Candidate Dashboard", path: "/hr/candidate-dashboard", enabled: can("candidates") },
       { id: "go-candidate-360", label: "Open Candidate 360", path: "/hr/candidate-360", enabled: can("search") },
       { id: "go-reports", label: "Open Reports", path: "/hr/reports", enabled: can("reports") },
-      { id: "go-analytics", label: "Open Analytics Cockpit", path: "/hr/analytics", enabled: can("reports") },
       { id: "go-drives", label: "Open Drive Manager", path: "/hr/drives", enabled: can("drives") },
       { id: "go-scorecards", label: "Open Scorecards", path: "/hr/scorecards", enabled: can("scorecards") },
       { id: "go-decisions", label: "Open Decisions", path: "/hr/decisions", enabled: can("decisions") },
       { id: "go-audit", label: "Open Audit Logs", path: "/hr/audit-logs", enabled: can("audit_logs") },
-      { id: "go-security", label: "Open Security Settings", path: "/hr/security", enabled: true },
       { id: "go-settings", label: "Open Admin Settings", path: "/admin-settings", enabled: can("settings") },
     ].filter((i) => i.enabled);
 
@@ -560,187 +558,10 @@ export const listDecisions = async (req, res) => {
   }
 };
 
-export const getFunnelAnalytics = async (req, res) => {
-  try {
-    const driveId = req.query?.driveId;
-    const cacheKey = `funnel:${driveId || "all"}`;
 
-    const data = await cacheWrap(cacheKey, 120000, async () => {
-      const candidateFilter = {};
-      const quizFilter = {};
 
-      if (driveId && mongoose.Types.ObjectId.isValid(driveId)) {
-        candidateFilter.driveId = driveId;
-        quizFilter.driveId = driveId;
-      }
 
-      const [registered, quizResults, decisions] = await Promise.all([
-        CandidateDetails.countDocuments(candidateFilter),
-        QuizResult.find(quizFilter).lean(),
-        Decision.find(driveId && mongoose.Types.ObjectId.isValid(driveId) ? { driveId } : {}).lean(),
-      ]);
 
-      const examPassed = quizResults.filter((q) => Number(q.totalMarks || 0) >= 13).length;
-      const r2Completed = quizResults.filter((q) => q?.R2?.[0]?.status === "completed").length;
-      const r3Completed = quizResults.filter((q) => q?.R3?.[0]?.status === "completed").length;
-      const r4Completed = quizResults.filter((q) => q?.R4?.[0]?.status === "completed").length;
-      const offersApproved = decisions.filter((d) => d.status === "approved").length;
-
-      const toPct = (value) => (registered > 0 ? Number(((value / registered) * 100).toFixed(2)) : 0);
-
-      return {
-        registered,
-        examPassed,
-        r2Completed,
-        r3Completed,
-        r4Completed,
-        offersApproved,
-        conversion: {
-          examPassed: toPct(examPassed),
-          r2Completed: toPct(r2Completed),
-          r3Completed: toPct(r3Completed),
-          r4Completed: toPct(r4Completed),
-          offersApproved: toPct(offersApproved),
-        },
-      };
-    });
-
-    return res.status(200).json({ success: true, data });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: "Failed to compute funnel analytics.", error: error.message });
-  }
-};
-
-export const getSlaAnalytics = async (req, res) => {
-  try {
-    const driveId = req.query?.driveId;
-    const cacheKey = `sla:${driveId || "all"}`;
-
-    const data = await cacheWrap(cacheKey, 120000, async () => {
-      const decisionFilter = {};
-
-      if (driveId && mongoose.Types.ObjectId.isValid(driveId)) {
-        decisionFilter.driveId = driveId;
-      }
-
-      const [pendingDecisions] = await Promise.all([
-        Decision.find({ ...decisionFilter, status: "pending" }).select("createdAt").lean(),
-      ]);
-
-      const now = Date.now();
-      const overduePendingDecisions = pendingDecisions.filter(
-        (d) => now - new Date(d.createdAt).getTime() > 24 * 60 * 60 * 1000
-      ).length;
-
-      return {
-        overduePendingDecisions,
-        slaBreaches: overduePendingDecisions,
-      };
-    });
-
-    return res.status(200).json({ success: true, data });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: "Failed to compute SLA analytics.", error: error.message });
-  }
-};
-
-export const getReasonAnalytics = async (req, res) => {
-  try {
-    const driveId = req.query?.driveId;
-    const cacheKey = `reasons:${driveId || "all"}`;
-
-    const data = await cacheWrap(cacheKey, 120000, async () => {
-      const decisionFilter = {};
-      const quizFilter = {};
-      if (driveId && mongoose.Types.ObjectId.isValid(driveId)) {
-        decisionFilter.driveId = driveId;
-        quizFilter.driveId = driveId;
-      }
-
-      const [decisions, quiz] = await Promise.all([
-        Decision.find(decisionFilter).lean(),
-        QuizResult.find(quizFilter).lean(),
-      ]);
-
-      const reasonCounts = {};
-      for (const d of decisions) {
-        const key = String(d.reasonCode || "unspecified").trim().toLowerCase() || "unspecified";
-        reasonCounts[key] = (reasonCounts[key] || 0) + 1;
-      }
-
-      const roundDropCounts = { r2: 0, r3: 0, r4: 0 };
-      for (const q of quiz) {
-        if (["drop", "rejected", "dropped"].includes(String(q?.R2?.[0]?.status || "").toLowerCase())) roundDropCounts.r2 += 1;
-        if (["drop", "rejected", "dropped"].includes(String(q?.R3?.[0]?.status || "").toLowerCase())) roundDropCounts.r3 += 1;
-        if (["drop", "rejected", "dropped"].includes(String(q?.R4?.[0]?.status || "").toLowerCase())) roundDropCounts.r4 += 1;
-      }
-
-      return { reasonCounts, roundDropCounts };
-    });
-
-    return res.status(200).json({ success: true, data });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: "Failed to compute reason analytics.", error: error.message });
-  }
-};
-
-export const getInterviewerCalibration = async (req, res) => {
-  try {
-    const driveId = req.query?.driveId;
-    const cacheKey = `calibration:${driveId || "all"}`;
-
-    const data = await cacheWrap(cacheKey, 120000, async () => {
-      const filter = {};
-      if (driveId && mongoose.Types.ObjectId.isValid(driveId)) {
-        filter.driveId = driveId;
-      }
-
-      const quiz = await QuizResult.find(filter).lean();
-      const map = new Map();
-
-      const collect = (entry, roundKey) => {
-        const round = entry?.[roundKey]?.[0];
-        if (!round) return;
-        const interviewer = String(round.interviewer || "").trim();
-        const rating = Number(round.rating || 0);
-        if (!interviewer || !Number.isFinite(rating) || rating <= 0) return;
-
-        if (!map.has(interviewer)) map.set(interviewer, []);
-        map.get(interviewer).push(rating);
-      };
-
-      for (const q of quiz) {
-        collect(q, "R2");
-        collect(q, "R4");
-      }
-
-      const allScores = Array.from(map.values()).flat();
-      const globalAvg =
-        allScores.length > 0 ? allScores.reduce((a, b) => a + b, 0) / allScores.length : 0;
-
-      const interviewers = Array.from(map.entries()).map(([name, values]) => {
-        const avg = values.reduce((a, b) => a + b, 0) / values.length;
-        const variance = values.reduce((acc, v) => acc + (v - avg) ** 2, 0) / values.length;
-        return {
-          interviewer: name,
-          samples: values.length,
-          averageRating: Number(avg.toFixed(2)),
-          stdDev: Number(Math.sqrt(variance).toFixed(2)),
-          driftFromGlobal: Number((avg - globalAvg).toFixed(2)),
-        };
-      });
-
-      return {
-        globalAverage: Number(globalAvg.toFixed(2)),
-        interviewers: interviewers.sort((a, b) => b.samples - a.samples),
-      };
-    });
-
-    return res.status(200).json({ success: true, data });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: "Failed to compute interviewer calibration.", error: error.message });
-  }
-};
 
 export const enqueueNotification = async (req, res) => {
   try {

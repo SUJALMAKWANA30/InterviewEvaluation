@@ -13,10 +13,6 @@ import {
   evaluateCandidateScorecard,
   upsertDecision,
   listDecisions,
-  getFunnelAnalytics,
-  getSlaAnalytics,
-  getReasonAnalytics,
-  getInterviewerCalibration,
   enqueueNotification,
   getAsyncJobs,
   getCandidateFitScore,
@@ -78,12 +74,6 @@ router.post("/scorecards/evaluate", requireHRUser, requireScorecardAccess("edit"
 
 router.get("/decisions", requireHRUser, listDecisions);
 router.post("/decisions", requireHRUser, upsertDecision);
-
-// Analytics and reporting
-router.get("/analytics/funnel", requireHRUser, authorizePermission("reports", "view"), getFunnelAnalytics);
-router.get("/analytics/sla", requireHRUser, authorizePermission("reports", "view"), getSlaAnalytics);
-router.get("/analytics/reasons", requireHRUser, authorizePermission("reports", "view"), getReasonAnalytics);
-router.get("/analytics/calibration", requireHRUser, authorizePermission("reports", "view"), getInterviewerCalibration);
 
 // Async queue endpoints
 router.post("/jobs/notify", requireHRUser, enqueueNotification);

@@ -164,16 +164,6 @@ export const authAPI = {
   /** Refresh token */
   refreshToken: (refreshToken) =>
     apiClient.post("/auth/refresh-token", { refreshToken }),
-
-  /** Sessions */
-  getSessions: () => apiClient.get("/auth/sessions"),
-  revokeSession: (id) => apiClient.delete(`/auth/sessions/${id}`),
-
-  /** MFA */
-  getMFAStatus: () => apiClient.get("/auth/mfa/status"),
-  setupMFA: () => apiClient.post("/auth/mfa/setup", {}),
-  enableMFA: (code) => apiClient.post("/auth/mfa/enable", { code }),
-  disableMFA: (payload) => apiClient.post("/auth/mfa/disable", payload),
 };
 
 // ============ ADMIN APIs (Roles & Users) ============
@@ -267,12 +257,6 @@ export const advancedAPI = {
   evaluateScorecard: (data) => apiClient.post("/advanced/scorecards/evaluate", data),
   listDecisions: (params = {}) => apiClient.get("/advanced/decisions", params),
   upsertDecision: (data) => apiClient.post("/advanced/decisions", data),
-
-  // Analytics
-  getFunnelAnalytics: (params = {}) => apiClient.get("/advanced/analytics/funnel", params),
-  getSlaAnalytics: (params = {}) => apiClient.get("/advanced/analytics/sla", params),
-  getReasonAnalytics: (params = {}) => apiClient.get("/advanced/analytics/reasons", params),
-  getCalibrationAnalytics: (params = {}) => apiClient.get("/advanced/analytics/calibration", params),
 
   // Queue jobs
   enqueueNotification: (data) => apiClient.post("/advanced/jobs/notify", data),
