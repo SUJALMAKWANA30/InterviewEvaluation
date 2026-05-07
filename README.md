@@ -69,13 +69,6 @@ npm run dev
 Environment:
 Create `.env` files in `backend/` and `frontend/` using your local values.
 
-## Future improvements
-- Add fine-grained audit log retention policies and export pipelines
-- Introduce structured exam proctoring signals for stronger integrity checks
-- Expand analytics with cohort-level comparisons and longitudinal trends
-- Harden rate limiting and anomaly detection for auth and exam endpoints
-- Add API contract tests to prevent backward incompatible changes
-
 ## Screenshots
 - Dashboard overview
   <img width="1579" height="897" alt="image" src="https://github.com/user-attachments/assets/0823b2d1-ff65-4320-af6d-2d84da1f0ab0" />
@@ -88,3 +81,7 @@ Create `.env` files in `backend/` and `frontend/` using your local values.
 
 - Exam builder
   <img width="1577" height="899" alt="image" src="https://github.com/user-attachments/assets/ba534517-7486-4b46-b6f1-7a43cb4abdae" />
+
+- Super Admin
+  <img width="1579" height="898" alt="image" src="https://github.com/user-attachments/assets/ddac8ed3-7d0c-41be-9a0c-572d3c2d491c" />
+

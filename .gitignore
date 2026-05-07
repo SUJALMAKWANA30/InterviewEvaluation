@@ -2,10 +2,6 @@
 node_modules/
 
 # Environment variables
-.env
-.env.local
-.env.development
-.env.production
 
 # Logs
 logs/
@@ -30,3 +26,4 @@ backend/config/google-drive-key.json
 !package.json
 !package-lock.json
 !package-lock.json
+config.bat
