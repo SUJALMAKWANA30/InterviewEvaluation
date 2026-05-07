@@ -78,10 +78,13 @@ Create `.env` files in `backend/` and `frontend/` using your local values.
 
 ## Screenshots
 - Dashboard overview
-- <img width="1579" height="897" alt="image" src="https://github.com/user-attachments/assets/0823b2d1-ff65-4320-af6d-2d84da1f0ab0" />
+  <img width="1579" height="897" alt="image" src="https://github.com/user-attachments/assets/0823b2d1-ff65-4320-af6d-2d84da1f0ab0" />
 
-- Drive management (placeholder)
-- <img width="1597" height="894" alt="image" src="https://github.com/user-attachments/assets/26a286fe-f1d1-479a-950a-e3515b6bc0e2" />
+- Drive management
+  <img width="1597" height="894" alt="image" src="https://github.com/user-attachments/assets/26a286fe-f1d1-479a-950a-e3515b6bc0e2" />
 
-- Exam builder (placeholder)
-- <img width="1577" height="899" alt="image" src="https://github.com/user-attachments/assets/ba534517-7486-4b46-b6f1-7a43cb4abdae" />
+- Candidate Details
+  <img width="1579" height="895" alt="image" src="https://github.com/user-attachments/assets/7acc2e0c-503f-44b5-91f8-a9e8ac45824c" />
+
+- Exam builder
+  <img width="1577" height="899" alt="image" src="https://github.com/user-attachments/assets/ba534517-7486-4b46-b6f1-7a43cb4abdae" />
